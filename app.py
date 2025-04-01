@@ -2425,53 +2425,58 @@ def login_page():
     """로그인 페이지"""
     st.markdown("""
         <style>
-        .login-container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .login-title {
-            text-align: center;
-            margin-bottom: 40px;
-            color: #333;
+        .main-title {
             display: flex;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             gap: 10px;
+            margin-bottom: 2rem;
         }
-        .login-title img {
+        .main-title img {
             width: 40px;
             height: 40px;
+        }
+        .main-title h1 {
+            font-size: 24px;
+            color: #333;
+            margin: 0;
         }
         .stTextInput > div > div > input {
             background-color: #f8f9fa;
         }
-        .login-button {
-            background-color: #ff4b4b;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 20px;
+        .stButton > button {
             width: 100%;
+            margin-top: 1rem;
+        }
+        .demo-info {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+            margin-top: 1rem;
         }
         </style>
     """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    
-    # 로고와 타이틀
-    st.markdown('<h1 class="login-title">🎓 학습 관리 시스템</h1>', unsafe_allow_html=True)
-    
+
+    # 메인 타이틀
+    st.markdown("""
+        <div class="main-title">
+            <img src="https://raw.githubusercontent.com/your-repo/assets/main/graduation-cap.png" alt="graduation cap">
+            <h1>학습 관리 시스템</h1>
+        </div>
+    """, unsafe_allow_html=True)
+
     # 로그인 폼
-    username = st.text_input("아이디", placeholder="아이디를 입력하세요", key="login_username")
-    password = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요", key="login_password")
+    st.markdown("아이디")
+    username = st.text_input("", placeholder="아이디를 입력하세요", key="username", label_visibility="collapsed")
     
+    st.markdown("비밀번호")
+    password = st.text_input("", type="password", placeholder="비밀번호를 입력하세요", key="password", label_visibility="collapsed")
+
     # 로그인 버튼
     if st.button("로그인", use_container_width=True):
         if not username or not password:
             st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
-            # 사용자 확인
             if username in st.session_state.users:
                 user_data = st.session_state.users[username]
                 if user_data['password'] == password:
@@ -2492,17 +2497,42 @@ def login_page():
                     st.error("비밀번호가 일치하지 않습니다.")
             else:
                 st.error("존재하지 않는 아이디입니다.")
-    
+
     # 데모 계정 정보
     with st.expander("데모 계정 정보"):
         st.markdown("""
         🔑 데모 계정:
+        
         - 관리자: admin / admin
         - 교사: teacher / teacher
         - 학생: student / student
         """)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+
+    with tab2:
+        st.markdown("### 👨‍🏫 교사 계정 신청")
+        st.info("교사 계정은 관리자 승인 후 사용할 수 있습니다.")
+        
+        new_name = st.text_input("이름:", key="register_name", placeholder="실명을 입력하세요")
+        new_username = st.text_input("사용할 아이디:", key="register_username", placeholder="사용할 아이디를 입력하세요")
+        new_password = st.text_input("비밀번호:", type="password", key="register_password", placeholder="비밀번호를 입력하세요")
+        confirm_password = st.text_input("비밀번호 확인:", type="password", key="confirm_password", placeholder="비밀번호를 다시 입력하세요")
+        
+        if st.button("계정 신청"):
+            if not new_name or not new_username or not new_password or not confirm_password:
+                st.error("모든 필드를 입력해주세요.")
+            elif new_password != confirm_password:
+                st.error("비밀번호가 일치하지 않습니다.")
+            elif new_username in st.session_state.users:
+                st.error("이미 사용 중인 아이디입니다.")
+            else:
+                st.session_state.users[new_username] = {
+                    'username': new_username,
+                    'password': new_password,
+                    'name': new_name,
+                    'role': 'pending_teacher'
+                }
+                save_users_data()
+                st.success("교사 계정 신청이 완료되었습니다. 관리자 승인을 기다려주세요.")
 
 # 관리자 대시보드 함수
 def admin_dashboard():
