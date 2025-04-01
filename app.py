@@ -84,15 +84,6 @@ except ImportError:
     # 가짜 openai 모듈 생성
     openai = type('openai', (), {'OpenAI': DummyOpenAI})
 
-# Google AI 관련 기능
-GOOGLE_AI_AVAILABLE = False
-try:
-    import google.generativeai as genai
-    GOOGLE_AI_AVAILABLE = False  # 구글 API 사용 비활성화
-except ImportError:
-    GOOGLE_AI_AVAILABLE = False
-    # 가짜 Google AI 모듈 생성을 위한 클래스는 필요할 때 구현
-
 # 비밀번호 관련 기능
 try:
     from passlib.hash import pbkdf2_sha256
