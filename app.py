@@ -2432,10 +2432,6 @@ def login_page():
             gap: 10px;
             margin-bottom: 2rem;
         }
-        .main-title img {
-            width: 40px;
-            height: 40px;
-        }
         .main-title h1 {
             font-size: 24px;
             color: #333;
@@ -2458,12 +2454,11 @@ def login_page():
     """, unsafe_allow_html=True)
 
     # 메인 타이틀
-    st.markdown("""
-        <div class="main-title">
-            <img src="https://raw.githubusercontent.com/your-repo/assets/main/graduation-cap.png" alt="graduation cap">
-            <h1>학습 관리 시스템</h1>
-        </div>
-    """, unsafe_allow_html=True)
+    col1, col2 = st.columns([1, 6])
+    with col1:
+        st.image("🎓", width=50)
+    with col2:
+        st.markdown("<h1>학습 관리 시스템</h1>", unsafe_allow_html=True)
 
     # 로그인 폼
     st.markdown("아이디")
