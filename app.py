@@ -430,87 +430,214 @@ def teacher_dashboard():
             else:
                 st.info("AI가 영어 문제를 자동으로 생성합니다. 원하는 설정을 입력하세요.")
                 
+                # 학교 구분 및 학년 선택
+                school_type = st.radio("학교 구분:", ["중학교", "고등학교"], horizontal=True)
+                
+                if school_type == "중학교":
+                    grade = st.selectbox("학년:", [1, 2, 3])
+                    grade_display = f"중학교 {grade}학년"
+                else:
+                    grade = st.selectbox("학년:", [1, 2, 3])
+                    grade_display = f"고등학교 {grade}학년"
+                
+                # 주제 카테고리
                 topic_category = st.selectbox(
                     "주제 카테고리:",
                     ["일상 생활", "학교 생활", "취미와 관심사", "환경과 사회", "문화와 예술", "과학과 기술"]
                 )
                 
-                difficulty = st.selectbox("난이도:", ["쉬움", "중간", "어려움"])
+                # 난이도 설정
+                difficulty = st.radio("난이도:", ["상", "중", "하"], horizontal=True)
                 
+                # 실제 저장할 난이도 매핑 (UI에서는 상/중/하로 보여주고, 저장할 때는 어려움/중간/쉬움으로 저장)
+                difficulty_mapping = {"상": "어려움", "중": "중간", "하": "쉬움"}
+                
+                # 문제 유형
                 problem_type = st.selectbox(
-                    "문제 유형:",
+                    "문제 주요 유형:",
                     ["작문 문제", "번역 문제", "독해 문제", "문법 문제", "어휘 문제"]
                 )
+                
+                # 문제 수량 설정 (10문제 단위로)
+                num_problems = st.slider("생성할 문제 수:", min_value=10, max_value=50, value=10, step=10)
+                
+                # 객관식/주관식 비율 설정 (기본 9:1로 설정)
+                st.write("객관식/주관식 비율 설정:")
+                col1, col2 = st.columns(2)
+                with col1:
+                    multiple_choice_ratio = st.slider("객관식 비율:", min_value=0, max_value=10, value=9)
+                with col2:
+                    essay_ratio = st.slider("주관식 비율:", min_value=0, max_value=10, value=1, disabled=True)
+                    # 객관식 비율에 따라 주관식 비율 자동 계산
+                    essay_ratio = 10 - multiple_choice_ratio
+                    st.write(f"주관식 비율: {essay_ratio}")
+                
+                # 계산된 문제 수
+                multiple_choice_count = int(num_problems * multiple_choice_ratio / 10)
+                essay_count = num_problems - multiple_choice_count
+                
+                st.info(f"생성될 문제: 총 {num_problems}문제 (객관식 {multiple_choice_count}문제, 주관식 {essay_count}문제)")
                 
                 generate_button = st.button("AI 문제 생성")
                 
                 if generate_button:
-                    with st.spinner("AI가 문제를 생성하고 있습니다..."):
+                    with st.spinner(f"{school_type} {grade}학년 {difficulty} 난이도 {num_problems}개 문제를 생성 중입니다..."):
                         try:
                             client = openai.OpenAI(api_key=st.session_state.openai_api_key)
                             
-                            prompt = f"""
-                            영어 교육용 {difficulty} 난이도의 '{topic_category}' 주제에 관한 '{problem_type}'을 생성해주세요.
+                            # 생성된 모든 문제를 저장할 리스트
+                            generated_problems = []
                             
-                            다음 형식으로 응답해주세요:
-                            제목: [문제 제목]
-                            내용: [문제 내용]
-                            예상 시간: [학생이 풀이하는데 필요한 예상 시간(분)]
+                            # 진행 상황 표시
+                            progress_bar = st.progress(0)
                             
-                            문제는 한국 고등학생 수준에 맞게 작성해주세요.
-                            """
-                            
-                            response = client.chat.completions.create(
-                                model="gpt-3.5-turbo",
-                                messages=[
-                                    {"role": "system", "content": "You are an English teacher creating problems for Korean high school students."},
-                                    {"role": "user", "content": prompt}
-                                ],
-                                max_tokens=500
-                            )
-                            
-                            generated_content = response.choices[0].message.content
-                            
-                            # AI 응답에서 제목, 내용, 예상 시간 추출
-                            title_match = re.search(r"제목:\s*(.*?)(?:\n|$)", generated_content)
-                            content_match = re.search(r"내용:\s*(.*?)(?:\n예상 시간:|$)", generated_content, re.DOTALL)
-                            time_match = re.search(r"예상 시간:\s*(\d+)", generated_content)
-                            
-                            if title_match and content_match:
-                                generated_title = title_match.group(1).strip()
-                                generated_content = content_match.group(1).strip()
-                                generated_time = int(time_match.group(1)) if time_match else 10
+                            # 1. 객관식 문제 생성
+                            if multiple_choice_count > 0:
+                                st.write(f"객관식 문제 {multiple_choice_count}개를 생성 중...")
                                 
-                                st.success("AI가 문제를 생성했습니다!")
+                                multiple_choice_prompt = f"""
+                                {grade_display} 학생을 위한 {difficulty} 난이도의 '{topic_category}' 주제에 관한 영어 객관식 문제 {multiple_choice_count}개를 생성해주세요.
                                 
-                                with st.expander("생성된 문제 미리보기", expanded=True):
-                                    st.subheader(generated_title)
-                                    st.write(generated_content)
-                                    st.write(f"예상 풀이 시간: {generated_time}분")
+                                각 문제는 다음 형식으로 작성해주세요:
                                 
-                                if st.button("이 문제 저장하기"):
+                                문제1:
+                                제목: [문제 제목]
+                                내용: [문제 내용]
+                                보기1: [첫 번째 보기]
+                                보기2: [두 번째 보기]
+                                보기3: [세 번째 보기]
+                                보기4: [네 번째 보기]
+                                정답: [정답 번호(1~4)]
+                                해설: [문제 해설]
+                                예상 시간: [풀이 예상 시간(분)]
+                                
+                                문제2:
+                                ...
+                                
+                                문제는 주요 유형이 '{problem_type}'이어야 하며, {grade_display} 영어 교과서 수준에 맞게 작성해주세요.
+                                """
+                                
+                                # 객관식 문제 생성 요청
+                                multiple_choice_response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[
+                                        {"role": "system", "content": "You are an English teacher creating problems for Korean students."},
+                                        {"role": "user", "content": multiple_choice_prompt}
+                                    ],
+                                    max_tokens=3000
+                                )
+                                
+                                # 응답 파싱
+                                multiple_choice_content = multiple_choice_response.choices[0].message.content
+                                
+                                # 객관식 문제 파싱 및 추가
+                                mc_problems = parse_multiple_choice_problems(multiple_choice_content)
+                                generated_problems.extend(mc_problems)
+                                
+                                # 진행 상황 업데이트
+                                progress_bar.progress(multiple_choice_count / num_problems)
+                            
+                            # 2. 주관식 문제 생성
+                            if essay_count > 0:
+                                st.write(f"주관식 문제 {essay_count}개를 생성 중...")
+                                
+                                essay_prompt = f"""
+                                {grade_display} 학생을 위한 {difficulty} 난이도의 '{topic_category}' 주제에 관한 영어 주관식 문제 {essay_count}개를 생성해주세요.
+                                
+                                각 문제는 다음 형식으로 작성해주세요:
+                                
+                                문제1:
+                                제목: [문제 제목]
+                                내용: [문제 내용]
+                                예시 답안: [모범 답안 예시]
+                                채점 기준: [채점 시 중점적으로 볼 내용]
+                                예상 시간: [풀이 예상 시간(분)]
+                                
+                                문제2:
+                                ...
+                                
+                                문제는 주요 유형이 '{problem_type}'이어야 하며, {grade_display} 영어 교과서 수준에 맞게 작성해주세요.
+                                """
+                                
+                                # 주관식 문제 생성 요청
+                                essay_response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[
+                                        {"role": "system", "content": "You are an English teacher creating problems for Korean students."},
+                                        {"role": "user", "content": essay_prompt}
+                                    ],
+                                    max_tokens=2000
+                                )
+                                
+                                # 응답 파싱
+                                essay_content = essay_response.choices[0].message.content
+                                
+                                # 주관식 문제 파싱 및 추가
+                                essay_problems = parse_essay_problems(essay_content)
+                                generated_problems.extend(essay_problems)
+                                
+                                # 진행 완료
+                                progress_bar.progress(1.0)
+                            
+                            # 생성된 문제 미리보기
+                            st.success(f"총 {len(generated_problems)}개 문제가 생성되었습니다.")
+                            
+                            # 생성된 문제 목록 표시
+                            with st.expander("생성된 문제 목록", expanded=True):
+                                for i, problem in enumerate(generated_problems):
+                                    problem_type_icon = "📝" if "예시 답안" in problem else "🔤"
+                                    st.markdown(f"### {problem_type_icon} {i+1}. {problem['title']}")
+                                    st.markdown(f"**내용:** {problem['description'][:100]}...")
+                                    st.markdown(f"**유형:** {'주관식' if '예시 답안' in problem else '객관식'}")
+                                    st.markdown(f"**예상 시간:** {problem.get('expected_time', 5)}분")
+                                    st.markdown("---")
+                            
+                            # 문제 저장 버튼
+                            if st.button("이 문제들을 모두 저장하기"):
+                                success_count = 0
+                                
+                                for problem in generated_problems:
                                     # 고유 ID 생성
                                     problem_id = str(uuid.uuid4())
                                     
+                                    # 난이도 매핑 적용
+                                    mapped_difficulty = difficulty_mapping.get(difficulty, "중간")
+                                    
                                     # 문제 정보 저장
-                                    st.session_state.teacher_problems[problem_id] = {
-                                        "title": generated_title,
-                                        "description": generated_content,
-                                        "difficulty": difficulty,
-                                        "expected_time": generated_time,
+                                    problem_data = {
+                                        "title": problem["title"],
+                                        "description": problem["description"],
+                                        "difficulty": mapped_difficulty,
+                                        "expected_time": problem.get("expected_time", 5),
                                         "created_by": st.session_state.username,
                                         "created_at": datetime.datetime.now().isoformat(),
-                                        "ai_generated": True
+                                        "ai_generated": True,
+                                        "school_type": school_type,
+                                        "grade": grade,
+                                        "topic_category": topic_category
                                     }
                                     
-                                    # JSON 파일에 저장
-                                    with open("teacher_problems.json", "w") as f:
-                                        json.dump(st.session_state.teacher_problems, f)
+                                    # 객관식/주관식 구분에 따른 추가 데이터
+                                    if "options" in problem:
+                                        problem_data["problem_type"] = "multiple_choice"
+                                        problem_data["options"] = problem["options"]
+                                        problem_data["correct_answer"] = problem["correct_answer"]
+                                        problem_data["explanation"] = problem["explanation"]
+                                    else:
+                                        problem_data["problem_type"] = "essay"
+                                        problem_data["sample_answer"] = problem.get("sample_answer", "")
+                                        problem_data["grading_criteria"] = problem.get("grading_criteria", "")
                                     
-                                    st.success(f"AI 생성 문제 '{generated_title}'이(가) 성공적으로 저장되었습니다.")
-                            else:
-                                st.error("AI 응답에서 문제 정보를 추출하는데 실패했습니다. 다시 시도해주세요.")
-                        
+                                    # 문제 저장
+                                    st.session_state.teacher_problems[problem_id] = problem_data
+                                    success_count += 1
+                                
+                                # JSON 파일에 저장
+                                with open("teacher_problems.json", "w") as f:
+                                    json.dump(st.session_state.teacher_problems, f)
+                                
+                                st.success(f"{success_count}개 문제가 성공적으로 저장되었습니다.")
+                                
                         except Exception as e:
                             st.error(f"AI 문제 생성 중 오류가 발생했습니다: {str(e)}")
     
@@ -1692,7 +1819,7 @@ def student_problem_solving():
     # 문제 필터링 옵션
     st.subheader("문제 필터링")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         filter_status = st.selectbox(
@@ -1716,6 +1843,32 @@ def student_problem_solving():
             "난이도:",
             ["모두", "쉬움", "중간", "어려움"]
         )
+    
+    with col4:
+        filter_type = st.selectbox(
+            "문제 유형:",
+            ["모두", "객관식", "주관식"]
+        )
+    
+    # 추가 필터링 옵션 (펼침 상자로 제공)
+    with st.expander("추가 필터 옵션"):
+        school_types = list(set(problem.get("school_type", "") for problem in all_problems.values() if "school_type" in problem))
+        if school_types:
+            filter_school = st.selectbox("학교 구분:", ["모두"] + school_types)
+        else:
+            filter_school = "모두"
+            
+        grades = list(set(problem.get("grade", "") for problem in all_problems.values() if "grade" in problem))
+        if grades:
+            filter_grade = st.selectbox("학년:", ["모두"] + grades)
+        else:
+            filter_grade = "모두"
+            
+        topics = list(set(problem.get("topic_category", "") for problem in all_problems.values() if "topic_category" in problem))
+        if topics:
+            filter_topic = st.selectbox("주제:", ["모두"] + topics)
+        else:
+            filter_topic = "모두"
     
     # 필터링 적용
     filtered_problems = {}
@@ -1742,6 +1895,25 @@ def student_problem_solving():
         # 난이도 필터링
         if filter_difficulty != "모두" and problem.get("difficulty") != filter_difficulty:
             continue
+            
+        # 문제 유형 필터링
+        if filter_type != "모두":
+            problem_type = problem.get("problem_type", "essay")  # 기본값은 주관식
+            if (filter_type == "객관식" and problem_type != "multiple_choice") or \
+               (filter_type == "주관식" and problem_type == "multiple_choice"):
+                continue
+        
+        # 학교 구분 필터링
+        if filter_school != "모두" and problem.get("school_type") != filter_school:
+            continue
+            
+        # 학년 필터링
+        if filter_grade != "모두" and problem.get("grade") != filter_grade:
+            continue
+            
+        # 주제 필터링
+        if filter_topic != "모두" and problem.get("topic_category") != filter_topic:
+            continue
         
         filtered_problems[p_id] = problem
     
@@ -1767,7 +1939,18 @@ def student_problem_solving():
                 status = "완료"
                 score = f" (점수: {solved_problems[p_id].get('score', 0)})"
         
-        problem_options.append(f"{problem.get('title')} - {teacher_name} - {problem.get('difficulty', '중간')} [{status}{score}]")
+        # 문제 유형 아이콘
+        type_icon = "🔤" if problem.get("problem_type") == "multiple_choice" else "📝"
+        
+        # 학교/학년 정보
+        school_grade = ""
+        if "school_type" in problem and "grade" in problem:
+            school_grade = f" - {problem.get('school_type')} {problem.get('grade')}학년"
+        
+        # 문제 옵션 생성
+        problem_options.append(
+            f"{type_icon} {problem.get('title')} - {teacher_name}{school_grade} - {problem.get('difficulty', '중간')} [{status}{score}]"
+        )
     
     selected_problem_idx = st.selectbox(
         "문제 선택:",
@@ -1777,6 +1960,28 @@ def student_problem_solving():
     
     selected_problem_id = list(filtered_problems.keys())[selected_problem_idx]
     selected_problem = filtered_problems[selected_problem_id]
+    
+    # 선택한 문제 미리보기
+    with st.expander("문제 미리보기", expanded=False):
+        st.subheader(selected_problem.get("title", ""))
+        
+        # 문제 타입에 따라 미리보기 형식 변경
+        if selected_problem.get("problem_type") == "multiple_choice":
+            st.markdown("**문제 유형:** 객관식")
+        else:
+            st.markdown("**문제 유형:** 주관식")
+            
+        st.markdown(f"**난이도:** {selected_problem.get('difficulty', '중간')}")
+        st.markdown(f"**예상 시간:** {selected_problem.get('expected_time', 10)}분")
+        if "topic_category" in selected_problem:
+            st.markdown(f"**주제:** {selected_problem.get('topic_category', '')}")
+            
+        # 내용 일부만 표시
+        description = selected_problem.get("description", "")
+        if len(description) > 200:
+            st.markdown(f"**내용:** {description[:200]}...")
+        else:
+            st.markdown(f"**내용:** {description}")
     
     # 선택한 문제 풀기 버튼
     if st.button("선택한 문제 풀기"):
@@ -1904,19 +2109,27 @@ def student_records_view():
                         st.rerun()
 
 def display_and_solve_problem():
+    st.header("문제 풀기")
+    
+    if "problem_solving_id" not in st.session_state:
+        st.error("문제를 찾을 수 없습니다.")
+        if st.button("문제 목록으로 돌아가기"):
+            st.rerun()
+        return
+    
     problem_id = st.session_state.problem_solving_id
     
-    # 문제 정보 가져오기
-    problem_data = st.session_state.teacher_problems.get(problem_id, {})
+    # 문제 데이터 가져오기
+    problem_data = st.session_state.teacher_problems.get(problem_id)
     
     if not problem_data:
-        st.error("문제 정보를 찾을 수 없습니다.")
-        if st.button("돌아가기"):
+        st.error("선택한 문제를 찾을 수 없습니다.")
+        if st.button("문제 목록으로 돌아가기"):
             st.session_state.pop("problem_solving_id", None)
             st.rerun()
         return
     
-    # 학생 기록 확인/초기화
+    # 학생 기록 초기화 또는 업데이트
     if st.session_state.username not in st.session_state.student_records:
         st.session_state.student_records[st.session_state.username] = {"problems": {}}
     
@@ -1925,114 +2138,295 @@ def display_and_solve_problem():
     if "problems" not in student_records:
         student_records["problems"] = {}
     
-    # 문제 상태 확인
-    is_completed = False
-    student_answer = ""
-    
-    if problem_id in student_records["problems"]:
-        problem_record = student_records["problems"][problem_id]
-        
-        if problem_record.get("status") == "completed":
-            is_completed = True
-        else:
-            # 진행 중인 문제면 답변 불러오기
-            student_answer = problem_record.get("answer", "")
-    else:
-        # 새 문제면 기록 초기화
+    # 해당 문제에 대한 학생 기록이 없으면 초기화
+    if problem_id not in student_records["problems"]:
         student_records["problems"][problem_id] = {
             "status": "in_progress",
             "started_at": datetime.datetime.now().isoformat(),
-            "answer": ""
+            "answer": "",
+            "score": 0
         }
     
-    # 문제 화면 표시
+    problem_record = student_records["problems"][problem_id]
+    is_completed = problem_record.get("status") == "completed"
+    
+    # 문제 정보 표시
+    st.subheader(problem_data.get("title", "제목 없음"))
+    
+    # 교사 및 난이도 정보
     teacher_name = st.session_state.users.get(problem_data.get("created_by", ""), {}).get("name", "알 수 없음")
     
-    st.title(f"문제: {problem_data.get('title', '제목 없음')}")
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.write(f"**출제자:** {teacher_name}")
-    
     with col2:
         st.write(f"**난이도:** {problem_data.get('difficulty', '중간')}")
-    
     with col3:
         if is_completed:
-            st.write(f"**점수:** {student_records['problems'][problem_id].get('score', 0)}")
+            st.write(f"**점수:** {problem_record.get('score', 0)}")
+        else:
+            st.write(f"**예상 시간:** {problem_data.get('expected_time', 10)}분")
     
+    # 학교/학년 정보가 있으면 표시
+    if "school_type" in problem_data and "grade" in problem_data:
+        st.write(f"**대상:** {problem_data.get('school_type')} {problem_data.get('grade')}학년")
+    
+    # 주제 정보가 있으면 표시
+    if "topic_category" in problem_data:
+        st.write(f"**주제:** {problem_data.get('topic_category')}")
+    
+    # 구분선
     st.markdown("---")
     
     # 문제 내용 표시
-    st.subheader("문제 내용")
-    st.write(problem_data.get("description", "내용 없음"))
+    st.markdown("### 문제")
+    st.markdown(problem_data.get("description", ""))
     
-    # 문제가 이미 완료되었다면, 결과만 표시
+    # 구분선
+    st.markdown("---")
+    
+    # 문제 유형에 따라 다른 UI 표시
+    problem_type = problem_data.get("problem_type", "essay")  # 기본값은 주관식
+    
     if is_completed:
-        st.success("이 문제는 이미 제출하여 평가되었습니다.")
+        # 완료된 문제인 경우 결과 표시
+        st.markdown("### 나의 답변")
         
-        st.subheader("나의 답변")
-        st.write(student_records["problems"][problem_id].get("answer", ""))
+        if problem_type == "multiple_choice":
+            # 객관식 문제
+            options = problem_data.get("options", [])
+            correct_answer = problem_data.get("correct_answer", 0)
+            student_answer = int(problem_record.get("answer", "0"))
+            
+            for i, option_text in enumerate(options, 1):
+                if i == correct_answer and i == student_answer:
+                    st.success(f"{i}. {option_text} ✓ (내 선택, 정답)")
+                elif i == correct_answer:
+                    st.success(f"{i}. {option_text} ✓ (정답)")
+                elif i == student_answer:
+                    st.error(f"{i}. {option_text} ✗ (내 선택)")
+                else:
+                    st.write(f"{i}. {option_text}")
+            
+            # 해설 표시
+            if "explanation" in problem_data:
+                st.markdown("### 해설")
+                st.markdown(problem_data.get("explanation", ""))
+            
+        else:
+            # 주관식 문제
+            st.write(problem_record.get("answer", ""))
         
-        st.subheader("평가 결과")
-        st.write(f"**점수:** {student_records['problems'][problem_id].get('score', 0)}")
+        # 피드백 표시
+        if "feedback" in problem_record:
+            st.markdown("### 피드백")
+            st.markdown(problem_record.get("feedback", ""))
+            
+            # 샘플 답안이 있으면 표시
+            if "sample_answer" in problem_data:
+                st.markdown("### 예시 답안")
+                st.markdown(problem_data.get("sample_answer", ""))
+    
+    else:
+        # 진행 중인 문제
+        st.markdown("### 답변 작성")
         
-        st.subheader("피드백")
-        st.write(student_records["problems"][problem_id].get("feedback", "피드백 없음"))
+        answer = problem_record.get("answer", "")
         
-        if st.button("문제 목록으로 돌아가기"):
-            st.session_state.pop("problem_solving_id", None)
-            st.rerun()
-        
-        return
-    
-    # 답변 입력 영역
-    st.subheader("답변 작성")
-    
-    answer = st.text_area("답변을 작성하세요:", height=200, value=student_answer)
-    
-    # 임시 저장
-    if answer != student_answer and answer.strip():
-        student_records["problems"][problem_id]["answer"] = answer
-        with open("student_records.json", "w") as f:
-            json.dump(st.session_state.student_records, f)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("임시 저장"):
-            if not answer.strip():
-                st.error("답변을 작성해주세요.")
-            else:
-                student_records["problems"][problem_id]["answer"] = answer
-                with open("student_records.json", "w") as f:
-                    json.dump(st.session_state.student_records, f)
-                st.success("답변이 임시 저장되었습니다.")
-    
-    with col2:
-        if st.button("제출하기"):
-            if not answer.strip():
-                st.error("답변을 작성해주세요.")
-            else:
-                # 답변 제출 - 교사가 채점할 때까지 completed 상태가 아님
-                student_records["problems"][problem_id]["answer"] = answer
-                student_records["problems"][problem_id]["submitted_at"] = datetime.datetime.now().isoformat()
-                student_records["problems"][problem_id]["status"] = "submitted"
+        if problem_type == "multiple_choice":
+            # 객관식 문제 UI
+            options = problem_data.get("options", [])
+            selected_option = 0
+            
+            try:
+                selected_option = int(answer) if answer else 0
+            except ValueError:
+                selected_option = 0
                 
-                with open("student_records.json", "w") as f:
-                    json.dump(st.session_state.student_records, f)
-                
-                st.success("답변이 제출되었습니다. 교사의 채점을 기다려주세요.")
-                
-                # 3초 후 문제 목록으로 돌아가기
-                time.sleep(3)
-                st.session_state.pop("problem_solving_id", None)
-                st.rerun()
+            # 라디오 버튼으로 보기 선택
+            option_radio = st.radio(
+                "답변 선택:",
+                range(1, len(options) + 1),
+                format_func=lambda i: f"{i}. {options[i-1]}",
+                index=selected_option - 1 if 0 < selected_option <= len(options) else 0
+            )
+            
+            # 임시 저장 및 제출 버튼
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("임시 저장"):
+                    problem_record["answer"] = str(option_radio)
+                    problem_record["updated_at"] = datetime.datetime.now().isoformat()
+                    
+                    with open("student_records.json", "w") as f:
+                        json.dump(st.session_state.student_records, f)
+                    
+                    st.success("답변이 임시 저장되었습니다.")
+            
+            with col2:
+                submit_button = st.button("답변 제출")
+                if submit_button:
+                    if not option_radio:
+                        st.error("답변을 선택해주세요.")
+                    else:
+                        # 자동 채점
+                        correct_answer = problem_data.get("correct_answer", 0)
+                        score = 100 if option_radio == correct_answer else 0
+                        
+                        # 학생 기록 업데이트
+                        problem_record["answer"] = str(option_radio)
+                        problem_record["score"] = score
+                        problem_record["completed_at"] = datetime.datetime.now().isoformat()
+                        problem_record["status"] = "completed"
+                        problem_record["feedback"] = f"{'정답입니다! 🎉' if score == 100 else '아쉽게도 오답입니다. 😢'}"
+                        
+                        if "explanation" in problem_data:
+                            problem_record["feedback"] += f"\n\n{problem_data.get('explanation', '')}"
+                        
+                        with open("student_records.json", "w") as f:
+                            json.dump(st.session_state.student_records, f)
+                        
+                        st.success("답변이 제출되었습니다.")
+                        time.sleep(1)
+                        st.rerun()
+        
+        else:
+            # 주관식 문제 UI
+            answer_text = st.text_area("답변:", value=answer, height=200)
+            
+            # 글자 수 표시
+            st.write(f"글자 수: {len(answer_text)} 자")
+            
+            # 임시 저장 및 제출 버튼
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("임시 저장"):
+                    problem_record["answer"] = answer_text
+                    problem_record["updated_at"] = datetime.datetime.now().isoformat()
+                    
+                    with open("student_records.json", "w") as f:
+                        json.dump(st.session_state.student_records, f)
+                    
+                    st.success("답변이 임시 저장되었습니다.")
+            
+            with col2:
+                submit_button = st.button("답변 제출")
+                if submit_button:
+                    if not answer_text.strip():
+                        st.error("답변을 작성해주세요.")
+                    else:
+                        # 학생 기록 업데이트
+                        problem_record["answer"] = answer_text
+                        problem_record["submitted_at"] = datetime.datetime.now().isoformat()
+                        problem_record["status"] = "submitted"
+                        
+                        with open("student_records.json", "w") as f:
+                            json.dump(st.session_state.student_records, f)
+                        
+                        st.success("답변이 제출되었습니다. 교사의 채점을 기다려주세요.")
+                        
+                        # 3초 후 문제 목록으로 돌아가기
+                        time.sleep(3)
+                        st.session_state.pop("problem_solving_id", None)
+                        st.rerun()
     
     if st.button("취소하고 돌아가기"):
         st.session_state.pop("problem_solving_id", None)
         st.rerun()
+
+# 객관식 문제 파싱 함수
+def parse_multiple_choice_problems(content):
+    problems = []
+    problem_blocks = re.split(r'문제\s*\d+:', content)
+    
+    for block in problem_blocks:
+        if not block.strip():
+            continue
+        
+        problem = {}
+        
+        # 제목 추출
+        title_match = re.search(r'제목:\s*(.*?)(?:\n|$)', block)
+        if title_match:
+            problem['title'] = title_match.group(1).strip()
+        
+        # 내용 추출
+        desc_match = re.search(r'내용:\s*(.*?)(?:\n보기1:|$)', block, re.DOTALL)
+        if desc_match:
+            problem['description'] = desc_match.group(1).strip()
+        
+        # 보기 추출
+        options = []
+        for i in range(1, 5):
+            option_match = re.search(fr'보기{i}:\s*(.*?)(?:\n|$)', block)
+            if option_match:
+                options.append(option_match.group(1).strip())
+        
+        if options:
+            problem['options'] = options
+        
+        # 정답 추출
+        answer_match = re.search(r'정답:\s*(\d+)', block)
+        if answer_match:
+            problem['correct_answer'] = int(answer_match.group(1))
+        
+        # 해설 추출
+        explanation_match = re.search(r'해설:\s*(.*?)(?:\n예상 시간:|$)', block, re.DOTALL)
+        if explanation_match:
+            problem['explanation'] = explanation_match.group(1).strip()
+        
+        # 예상 시간 추출
+        time_match = re.search(r'예상 시간:\s*(\d+)', block)
+        if time_match:
+            problem['expected_time'] = int(time_match.group(1))
+        
+        # 최소한의 정보가 있으면 추가
+        if 'title' in problem and 'description' in problem:
+            problems.append(problem)
+    
+    return problems
+
+# 주관식 문제 파싱 함수
+def parse_essay_problems(content):
+    problems = []
+    problem_blocks = re.split(r'문제\s*\d+:', content)
+    
+    for block in problem_blocks:
+        if not block.strip():
+            continue
+        
+        problem = {}
+        
+        # 제목 추출
+        title_match = re.search(r'제목:\s*(.*?)(?:\n|$)', block)
+        if title_match:
+            problem['title'] = title_match.group(1).strip()
+        
+        # 내용 추출
+        desc_match = re.search(r'내용:\s*(.*?)(?:\n예시 답안:|$)', block, re.DOTALL)
+        if desc_match:
+            problem['description'] = desc_match.group(1).strip()
+        
+        # 예시 답안 추출
+        sample_match = re.search(r'예시 답안:\s*(.*?)(?:\n채점 기준:|$)', block, re.DOTALL)
+        if sample_match:
+            problem['sample_answer'] = sample_match.group(1).strip()
+        
+        # 채점 기준 추출
+        criteria_match = re.search(r'채점 기준:\s*(.*?)(?:\n예상 시간:|$)', block, re.DOTALL)
+        if criteria_match:
+            problem['grading_criteria'] = criteria_match.group(1).strip()
+        
+        # 예상 시간 추출
+        time_match = re.search(r'예상 시간:\s*(\d+)', block)
+        if time_match:
+            problem['expected_time'] = int(time_match.group(1))
+        
+        # 최소한의 정보가 있으면 추가
+        if 'title' in problem and 'description' in problem:
+            problems.append(problem)
+    
+    return problems
 
 # 앱 실행
 if __name__ == "__main__":
