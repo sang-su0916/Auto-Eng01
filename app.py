@@ -2677,11 +2677,14 @@ def admin_user_management():
 def admin_api_settings():
     st.header("🔑 API 키 관리")
     
-    # 기본 API 키 (하드코딩된 옵션) - 환경설정 초기화 전에도 사용 가능한 키
-    DEFAULT_OPENAI_API_KEY = "your_default_openai_key_here"  # 개발용 기본 키 (실제 사용 시 변경 필요)
+    # 기본 API 키 설정
+    DEFAULT_OPENAI_API_KEY = "sk-b7UOp..."  # 실제 API 키 (베타 테스트용)
     
     # API 키 설정 여부 확인
     current_api_key = st.session_state.get("openai_api_key", "")
+    if not current_api_key:
+        st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
+        current_api_key = DEFAULT_OPENAI_API_KEY
     
     # 현재 설정된 API 키 정보 표시
     st.subheader("API 키 상태")
@@ -2689,23 +2692,15 @@ def admin_api_settings():
     if current_api_key:
         is_default_key = current_api_key == DEFAULT_OPENAI_API_KEY
         
-        # 마스킹된 키 표시
-        masked_key = current_api_key[:4] + "*" * (len(current_api_key) - 8) + current_api_key[-4:] if len(current_api_key) > 8 else "*" * len(current_api_key)
-        
         if is_default_key:
-            st.warning("⚠️ 현재 하드코딩된 기본 API 키를 사용 중입니다. 실제 API 키로 변경하세요.")
+            st.success("✅ 기본 API 키가 설정되어 있습니다.")
         else:
-            st.success(f"✅ OpenAI API 키가 설정되어 있습니다: {masked_key}")
+            st.success("✅ 사용자 지정 API 키가 설정되어 있습니다.")
     else:
         st.error("❌ OpenAI API 키가 설정되어 있지 않습니다.")
     
-    # API 키 표시 토글
-    show_key = st.checkbox("API 키 표시", value=False)
-    if show_key and current_api_key:
-        st.code(current_api_key)
-    
     # 탭 생성
-    tab1, tab2, tab3 = st.tabs(["API 키 설정", "키 저장 옵션", "하드코딩된 키 설정"])
+    tab1, tab2 = st.tabs(["API 키 설정", "키 저장 옵션"])
     
     # API 키 설정 탭
     with tab1:
@@ -2714,7 +2709,7 @@ def admin_api_settings():
         new_api_key = st.text_input(
             "OpenAI API 키",
             value="",
-            type="password" if not show_key else "default",
+            type="password",
             placeholder="sk-..."
         )
         
@@ -2737,16 +2732,17 @@ def admin_api_settings():
                         st.success("✅ API 키가 저장되었습니다.")
         
         with col2:
-            if st.button("키 초기화", key="clear_key"):
-                # 확인 대화상자
-                reset_confirmed = st.checkbox("정말 API 키를 초기화하시겠습니까?", key="confirm_reset")
-                
-                if reset_confirmed:
-                    st.session_state.openai_api_key = ""
-                    if 'openai_client' in st.session_state:
-                        st.session_state.openai_client = None
-                    st.success("✅ API 키가 초기화되었습니다.")
-                    st.rerun()
+            if st.button("기본 키로 복원", key="restore_key"):
+                st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
+                if has_openai:
+                    try:
+                        st.session_state.openai_client = openai.OpenAI(api_key=DEFAULT_OPENAI_API_KEY)
+                        st.success("✅ 기본 API 키가 복원되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ API 클라이언트 초기화 실패: {str(e)}")
+                else:
+                    st.success("✅ 기본 API 키가 복원되었습니다.")
         
         # API 연결 테스트
         if st.button("API 연결 테스트"):
@@ -2794,7 +2790,7 @@ def admin_api_settings():
                             with open("config.json", "r") as f:
                                 config_data = json.load(f)
                         
-                        # API 키 저장 (인코딩없이 직접 저장)
+                        # API 키 저장
                         config_data["openai_api_key"] = api_key
                         
                         # 파일에 저장
@@ -2903,22 +2899,28 @@ def admin_backup_restore():
         include_records = st.checkbox("학습 기록 포함", value=True)
         include_repository = st.checkbox("문제 저장소 포함", value=True)
         
+        # 파일 형식 선택
+        file_format = st.radio("백업 파일 형식", ["JSON", "CSV"])
+        
         # 암호화 옵션 (cryptography 라이브러리가 있는 경우에만)
         encrypt_backup = False
         encryption_key = ""
         
-        if crypto_available:
+        if crypto_available and file_format == "JSON":
             encrypt_backup = st.checkbox("백업 파일 암호화", value=False)
             if encrypt_backup:
                 encryption_key = st.text_input("암호화 키 (복원 시 필요)", type="password")
                 if not encryption_key:
                     st.warning("암호화 키를 설정하세요. 이 키는 복원 시 반드시 필요합니다.")
+        elif crypto_available and file_format == "CSV":
+            st.info("CSV 형식은 암호화를 지원하지 않습니다.")
         else:
-            st.warning("암호화 기능을 사용하려면 'cryptography' 라이브러리를 설치하세요: pip install cryptography")
+            if file_format == "JSON":
+                st.warning("암호화 기능을 사용하려면 'cryptography' 라이브러리를 설치하세요: pip install cryptography")
         
         # 백업 버튼
         if st.button("백업 파일 생성"):
-            if encrypt_backup and not encryption_key:
+            if encrypt_backup and not encryption_key and file_format == "JSON":
                 st.error("암호화를 위한 키를 입력해주세요.")
             else:
                 # 백업 데이터 생성
@@ -2939,39 +2941,48 @@ def admin_backup_restore():
                 if include_repository:
                     backup_data["problem_repository"] = st.session_state.problem_repository
                 
-                # 백업 데이터를 JSON으로 변환
-                backup_json = json.dumps(backup_data, indent=2)
-                
-                # 필요한 경우 암호화
-                if encrypt_backup and crypto_available:
-                    try:
-                        import base64
-                        from cryptography.fernet import Fernet
-                        from cryptography.hazmat.primitives import hashes
-                        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-                        
-                        # 비밀번호로부터 키 생성
-                        salt = b'salt_'  # 실제 운영에서는 랜덤 솔트 사용
-                        kdf = PBKDF2HMAC(
-                            algorithm=hashes.SHA256(),
-                            length=32,
-                            salt=salt,
-                            iterations=100000
-                        )
-                        key = base64.urlsafe_b64encode(kdf.derive(encryption_key.encode()))
-                        f = Fernet(key)
-                        encrypted_backup = f.encrypt(backup_json.encode())
-                        
-                        # 암호화된 백업 파일 다운로드
-                        st.download_button(
-                            label="암호화된 백업 파일 다운로드",
-                            data=encrypted_backup,
-                            file_name=f"backup_encrypted_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                            mime="application/octet-stream"
-                        )
-                    except Exception as e:
-                        st.error(f"암호화 중 오류 발생: {str(e)}")
-                        st.info("일반 백업 파일로 다운로드합니다.")
+                if file_format == "JSON":
+                    # JSON 형식으로 백업
+                    backup_json = json.dumps(backup_data, indent=2)
+                    
+                    # 필요한 경우 암호화
+                    if encrypt_backup and crypto_available:
+                        try:
+                            import base64
+                            from cryptography.fernet import Fernet
+                            from cryptography.hazmat.primitives import hashes
+                            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                            
+                            # 비밀번호로부터 키 생성
+                            salt = b'salt_'  # 실제 운영에서는 랜덤 솔트 사용
+                            kdf = PBKDF2HMAC(
+                                algorithm=hashes.SHA256(),
+                                length=32,
+                                salt=salt,
+                                iterations=100000
+                            )
+                            key = base64.urlsafe_b64encode(kdf.derive(encryption_key.encode()))
+                            f = Fernet(key)
+                            encrypted_backup = f.encrypt(backup_json.encode())
+                            
+                            # 암호화된 백업 파일 다운로드
+                            st.download_button(
+                                label="암호화된 백업 파일 다운로드",
+                                data=encrypted_backup,
+                                file_name=f"backup_encrypted_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/octet-stream"
+                            )
+                        except Exception as e:
+                            st.error(f"암호화 중 오류 발생: {str(e)}")
+                            st.info("일반 백업 파일로 다운로드합니다.")
+                            st.download_button(
+                                label="백업 파일 다운로드",
+                                data=backup_json,
+                                file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json"
+                            )
+                    else:
+                        # 일반 백업 파일 다운로드
                         st.download_button(
                             label="백업 파일 다운로드",
                             data=backup_json,
@@ -2979,27 +2990,64 @@ def admin_backup_restore():
                             mime="application/json"
                         )
                 else:
-                    # 일반 백업 파일 다운로드
-                    st.download_button(
-                        label="백업 파일 다운로드",
-                        data=backup_json,
-                        file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
+                    # CSV 형식으로 백업
+                    try:
+                        import pandas as pd
+                        import io
+                        
+                        # 각 데이터를 DataFrame으로 변환
+                        dfs = {}
+                        if include_users:
+                            users_df = pd.DataFrame.from_dict(st.session_state.users, orient='index')
+                            dfs['users'] = users_df
+                        
+                        if include_problems:
+                            problems_df = pd.DataFrame.from_dict(st.session_state.teacher_problems, orient='index')
+                            dfs['problems'] = problems_df
+                        
+                        if include_records:
+                            records_df = pd.DataFrame.from_dict(st.session_state.student_records, orient='index')
+                            dfs['records'] = records_df
+                        
+                        if include_repository:
+                            repository_df = pd.DataFrame(st.session_state.problem_repository.get('problems', []))
+                            dfs['repository'] = repository_df
+                        
+                        # CSV 파일 생성
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            for name, df in dfs.items():
+                                df.to_excel(writer, sheet_name=name)
+                        
+                        # 다운로드 버튼
+                        st.download_button(
+                            label="CSV 백업 파일 다운로드",
+                            data=output.getvalue(),
+                            file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    except Exception as e:
+                        st.error(f"CSV 파일 생성 중 오류 발생: {str(e)}")
     
     # 복원 탭
     with tab2:
         st.subheader("데이터 복원")
         st.warning("경고: 복원 작업은 현재 데이터를 덮어쓰게 됩니다. 복원 전에 백업을 권장합니다.")
         
-        # 복원 파일 업로드
-        uploaded_file = st.file_uploader("백업 파일 선택", type=["json"])
+        # 파일 형식 선택
+        restore_format = st.radio("복원 파일 형식", ["JSON", "CSV"])
         
-        # 암호화 옵션 (cryptography 라이브러리가 있는 경우에만)
+        # 복원 파일 업로드
+        if restore_format == "JSON":
+            uploaded_file = st.file_uploader("백업 파일 선택", type=["json"])
+        else:
+            uploaded_file = st.file_uploader("백업 파일 선택", type=["xlsx"])
+        
+        # 암호화 옵션 (JSON 형식이고 cryptography 라이브러리가 있는 경우에만)
         is_encrypted = False
         decrypt_key = ""
         
-        if crypto_available:
+        if crypto_available and restore_format == "JSON":
             is_encrypted = st.checkbox("암호화된 백업 파일")
             if is_encrypted:
                 decrypt_key = st.text_input("암호화 키 입력", type="password")
@@ -3014,61 +3062,92 @@ def admin_backup_restore():
             
             if st.button("데이터 복원"):
                 try:
-                    # 파일 내용 읽기
-                    file_content = uploaded_file.read()
-                    
-                    # 암호화된 파일 복호화
-                    if is_encrypted and crypto_available:
-                        if not decrypt_key:
-                            st.error("암호화된 파일을 복원하려면 암호화 키가 필요합니다.")
-                            return
+                    if restore_format == "JSON":
+                        # JSON 파일 복원
+                        file_content = uploaded_file.read()
                         
-                        try:
-                            import base64
-                            from cryptography.fernet import Fernet
-                            from cryptography.hazmat.primitives import hashes
-                            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                        # 암호화된 파일 복호화
+                        if is_encrypted and crypto_available:
+                            if not decrypt_key:
+                                st.error("암호화된 파일을 복원하려면 암호화 키가 필요합니다.")
+                                return
                             
-                            # 비밀번호로부터 키 생성
-                            salt = b'salt_'  # 백업 시 사용한 것과 동일한 솔트 사용
-                            kdf = PBKDF2HMAC(
-                                algorithm=hashes.SHA256(),
-                                length=32,
-                                salt=salt,
-                                iterations=100000
-                            )
-                            key = base64.urlsafe_b64encode(kdf.derive(decrypt_key.encode()))
-                            f = Fernet(key)
-                            decrypted_content = f.decrypt(file_content)
-                            backup_data = json.loads(decrypted_content)
-                        except Exception as e:
-                            st.error(f"복호화 실패: {str(e)}")
-                            return
+                            try:
+                                import base64
+                                from cryptography.fernet import Fernet
+                                from cryptography.hazmat.primitives import hashes
+                                from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                                
+                                salt = b'salt_'
+                                kdf = PBKDF2HMAC(
+                                    algorithm=hashes.SHA256(),
+                                    length=32,
+                                    salt=salt,
+                                    iterations=100000
+                                )
+                                key = base64.urlsafe_b64encode(kdf.derive(decrypt_key.encode()))
+                                f = Fernet(key)
+                                decrypted_content = f.decrypt(file_content)
+                                backup_data = json.loads(decrypted_content)
+                            except Exception as e:
+                                st.error(f"복호화 실패: {str(e)}")
+                                return
+                        else:
+                            backup_data = json.loads(file_content)
+                        
+                        # 데이터 복원
+                        if restore_users and "users" in backup_data:
+                            st.session_state.users = backup_data["users"]
+                            save_users_data()
+                        
+                        if restore_problems and "teacher_problems" in backup_data:
+                            st.session_state.teacher_problems = backup_data["teacher_problems"]
+                            save_teacher_problems()
+                        
+                        if restore_records and "student_records" in backup_data:
+                            st.session_state.student_records = backup_data["student_records"]
+                            save_student_records()
+                        
+                        if restore_repository and "problem_repository" in backup_data:
+                            st.session_state.problem_repository = backup_data["problem_repository"]
+                            save_problem_repository()
                     else:
-                        # 일반 JSON 파일
-                        backup_data = json.loads(file_content)
-                    
-                    # 백업 데이터 검증
-                    if "version" not in backup_data:
-                        st.error("유효하지 않은 백업 파일입니다.")
-                        return
-                    
-                    # 데이터 복원
-                    if restore_users and "users" in backup_data:
-                        st.session_state.users = backup_data["users"]
-                        save_users_data()
-                    
-                    if restore_problems and "teacher_problems" in backup_data:
-                        st.session_state.teacher_problems = backup_data["teacher_problems"]
-                        save_teacher_problems()
-                    
-                    if restore_records and "student_records" in backup_data:
-                        st.session_state.student_records = backup_data["student_records"]
-                        save_student_records()
-                    
-                    if restore_repository and "problem_repository" in backup_data:
-                        st.session_state.problem_repository = backup_data["problem_repository"]
-                        save_problem_repository()
+                        # CSV(Excel) 파일 복원
+                        try:
+                            import pandas as pd
+                            
+                            # Excel 파일 읽기
+                            excel_data = pd.read_excel(uploaded_file, sheet_name=None)
+                            
+                            # 데이터 복원
+                            if restore_users and 'users' in excel_data:
+                                users_df = excel_data['users']
+                                st.session_state.users = users_df.to_dict(orient='index')
+                                save_users_data()
+                            
+                            if restore_problems and 'problems' in excel_data:
+                                problems_df = excel_data['problems']
+                                st.session_state.teacher_problems = problems_df.to_dict(orient='index')
+                                save_teacher_problems()
+                            
+                            if restore_records and 'records' in excel_data:
+                                records_df = excel_data['records']
+                                st.session_state.student_records = records_df.to_dict(orient='index')
+                                save_student_records()
+                            
+                            if restore_repository and 'repository' in excel_data:
+                                repository_df = excel_data['repository']
+                                st.session_state.problem_repository = {
+                                    'problems': repository_df.to_dict(orient='records'),
+                                    'metadata': {
+                                        'last_updated': datetime.now().isoformat(),
+                                        'version': '1.0'
+                                    }
+                                }
+                                save_problem_repository()
+                        except Exception as e:
+                            st.error(f"CSV 파일 복원 중 오류 발생: {str(e)}")
+                            return
                     
                     st.success("데이터가 성공적으로 복원되었습니다.")
                     st.info("변경사항을 적용하려면 앱을 새로고침하세요.")
