@@ -4,17 +4,25 @@ import base64
 import time
 import hashlib
 import re
+import uuid
+import random
 import traceback
 from datetime import datetime
 
 # 패키지 가용성 체크
 try:
     import streamlit as st
+    import openai
+    from passlib.hash import pbkdf2_sha256
+    from dotenv import load_dotenv
+    USING_PASSLIB = True
 except ImportError:
     class DummySt:
         def __getattr__(self, name):
             return lambda *args, **kwargs: None
     st = DummySt()
+    USING_PASSLIB = False
+    pbkdf2_sha256 = None
 
 # datetime 모듈 대체 클래스 (오류 방지용)
 class DummyDatetime:
@@ -2406,96 +2414,77 @@ def save_student_records():
 
 # 로그인 페이지 함수
 def login_page():
-    st.title("🔐 학습 관리 시스템 로그인")
+    # CSS 스타일 적용
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: #f8f9fa;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .login-title {
+            color: #1f1f1f;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-input {
+            margin-bottom: 15px;
+        }
+        .login-button {
+            width: 100%;
+            margin-top: 10px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
     
-    # 처음 실행하는 경우 세션 변수 초기화
-    if "login_form_submitted" not in st.session_state:
-        st.session_state.login_form_submitted = False
+    # 로고와 타이틀
+    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🎓 학습 관리 시스템</h1>", unsafe_allow_html=True)
     
-    if "register_form_submitted" not in st.session_state:
-        st.session_state.register_form_submitted = False
+    # 로그인 폼
+    username = st.text_input("아이디", placeholder="아이디를 입력하세요")
+    password = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
     
-    # 탭 생성
-    tab1, tab2 = st.tabs(["로그인", "교사 계정 신청"])
-    
-    # 로그인 탭
-    with tab1:
-        st.subheader("로그인")
-        
-        username = st.text_input("아이디:", key="login_username")
-        password = st.text_input("비밀번호:", type="password", key="login_password")
-        
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            login_button = st.button("로그인", use_container_width=True)
-        
-        if login_button or st.session_state.login_form_submitted:
-            st.session_state.login_form_submitted = True
-            
-            if not username or not password:
-                st.error("아이디와 비밀번호를 모두 입력해주세요.")
-            else:
-                # 사용자 확인
-                if username in st.session_state.users:
-                    user_data = st.session_state.users[username]
+    # 로그인 버튼
+    if st.button("로그인", use_container_width=True):
+        if not username or not password:
+            st.error("아이디와 비밀번호를 모두 입력해주세요.")
+        else:
+            if username in st.session_state.users:
+                user_data = st.session_state.users[username]
+                if verify_password(password, user_data["password"]):
+                    st.session_state.username = username
+                    role = user_data["role"]
                     
-                    # 비밀번호 검증
-                    if verify_password(password, user_data.get("password_hash", "")):
-                        # 로그인 성공
-                        st.session_state.username = username
-                        st.session_state.login_form_submitted = False  # 리셋
-                        st.rerun()
-                    else:
-                        st.error("비밀번호가 일치하지 않습니다.")
+                    # 역할에 따른 환영 메시지
+                    if role == "admin":
+                        st.success("👨‍💼 관리자로 로그인되었습니다.")
+                    elif role == "teacher":
+                        st.success("👨‍🏫 교사로 로그인되었습니다.")
+                    elif role == "student":
+                        st.success("👨‍🎓 학생으로 로그인되었습니다.")
+                    
+                    time.sleep(1)
+                    st.rerun()
                 else:
-                    st.error("존재하지 않는 아이디입니다.")
-    
-    # 교사 계정 신청 탭
-    with tab2:
-        st.subheader("교사 계정 신청")
-        st.info("교사 계정은 관리자 승인 후 사용할 수 있습니다.")
-        
-        new_name = st.text_input("이름:", key="register_name")
-        new_username = st.text_input("아이디:", key="register_username")
-        new_password = st.text_input("비밀번호:", type="password", key="register_password")
-        confirm_password = st.text_input("비밀번호 확인:", type="password", key="register_confirm")
-        new_email = st.text_input("이메일:", key="register_email")
-        
-        register_button = st.button("계정 신청")
-        
-        if register_button or st.session_state.register_form_submitted:
-            st.session_state.register_form_submitted = True
-            
-            if not new_name or not new_username or not new_password or not confirm_password:
-                st.error("모든 필수 항목을 입력해주세요.")
-            elif new_password != confirm_password:
-                st.error("비밀번호가 일치하지 않습니다.")
-            elif len(new_password) < 4:
-                st.error("비밀번호는 최소 4자 이상이어야 합니다.")
-            elif new_username in st.session_state.users:
-                st.error(f"아이디 '{new_username}'는 이미 사용 중입니다.")
+                    st.error("비밀번호가 일치하지 않습니다.")
             else:
-                # 교사 계정 신청 (pending 상태로 생성)
-                password_hash = hash_password(new_password)
-                
-                st.session_state.users[new_username] = {
-                    "username": new_username,
-                    "password_hash": password_hash,
-                    "name": new_name,
-                    "email": new_email,
-                    "role": "pending_teacher",  # 승인 대기 상태
-                    "created_at": datetime.now().isoformat()
-                }
-                
-                # 변경사항 저장
-                save_users_data()
-                
-                st.success("교사 계정 신청이 완료되었습니다. 관리자 승인 후 사용 가능합니다.")
-                
-                # 폼 초기화
-                st.session_state.register_form_submitted = False
-                st.rerun()
+                st.error("존재하지 않는 아이디입니다.")
+    
+    # 데모 계정 정보
+    with st.expander("데모 계정 정보"):
+        st.info("""
+        🔑 데모 계정:
+        - 관리자: admin / admin
+        - 교사: teacher / teacher
+        - 학생: student / student
+        """)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # 관리자 대시보드 함수
 def admin_dashboard():
