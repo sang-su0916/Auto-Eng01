@@ -310,40 +310,209 @@ def teacher_dashboard():
     elif menu == "문제 출제":
         st.header("새 문제 출제")
         
-        # 문제 출제 폼
-        problem_title = st.text_input("문제 제목:")
-        problem_description = st.text_area("문제 내용:", height=200)
+        # 출제 방식 선택
+        creation_method = st.radio(
+            "문제 출제 방식 선택:",
+            ["직접 문제 출제", "CSV 파일 업로드", "AI 문제 자동 생성"],
+            horizontal=True
+        )
         
-        col1, col2 = st.columns(2)
+        if creation_method == "직접 문제 출제":
+            # 직접 문제 출제 폼
+            st.subheader("새 문제 출제")
+            
+            problem_title = st.text_input("문제 제목:")
+            problem_description = st.text_area("문제 내용:", height=200)
+            problem_difficulty = st.selectbox("난이도:", ["쉬움", "중간", "어려움"])
+            expected_time = st.number_input("예상 풀이 시간(분):", min_value=5, max_value=60, value=10, step=5)
+            
+            if st.button("문제 저장"):
+                if not problem_title or not problem_description:
+                    st.error("문제 제목과 내용은 필수 입력 사항입니다.")
+                else:
+                    # 고유 ID 생성
+                    problem_id = str(uuid.uuid4())
+                    
+                    # 문제 정보 저장
+                    st.session_state.teacher_problems[problem_id] = {
+                        "title": problem_title,
+                        "description": problem_description,
+                        "difficulty": problem_difficulty,
+                        "expected_time": expected_time,
+                        "created_by": st.session_state.username,
+                        "created_at": datetime.datetime.now().isoformat()
+                    }
+                    
+                    # JSON 파일에 저장
+                    with open("teacher_problems.json", "w") as f:
+                        json.dump(st.session_state.teacher_problems, f)
+                    
+                    st.success(f"문제 '{problem_title}'이(가) 성공적으로 저장되었습니다.")
+                    # 입력 필드 초기화
+                    st.experimental_rerun()
         
-        with col1:
-            problem_level = st.selectbox("난이도:", ["초급", "중급", "고급"])
+        elif creation_method == "CSV 파일 업로드":
+            st.subheader("CSV 파일로 문제 업로드")
+            
+            st.markdown("""
+            ### CSV 파일 형식 안내
+            CSV 파일은 다음 열을 포함해야 합니다:
+            - `title`: 문제 제목
+            - `description`: 문제 내용
+            - `difficulty`: 난이도 (쉬움, 중간, 어려움)
+            - `expected_time`: 예상 풀이 시간(분)
+            
+            예시:
+            ```
+            title,description,difficulty,expected_time
+            "영어 작문 연습","다음 주제에 대해 100단어 이상 영어로 작성하세요: My favorite hobby","중간",15
+            "영어 번역 문제","다음 한국어 문장을 영어로 번역하세요: 나는 영어 공부를 좋아합니다.","쉬움",5
+            ```
+            """)
+            
+            uploaded_file = st.file_uploader("CSV 파일 업로드", type=["csv"])
+            
+            if uploaded_file is not None:
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    required_columns = ["title", "description", "difficulty", "expected_time"]
+                    
+                    # 필수 열 확인
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    if missing_columns:
+                        st.error(f"CSV 파일에 다음 필수 열이 없습니다: {', '.join(missing_columns)}")
+                        return
+                    
+                    if st.button("문제 일괄 등록"):
+                        success_count = 0
+                        error_count = 0
+                        
+                        for _, row in df.iterrows():
+                            try:
+                                # 데이터 유효성 검사
+                                if not row["title"] or not row["description"]:
+                                    error_count += 1
+                                    continue
+                                
+                                # 고유 ID 생성
+                                problem_id = str(uuid.uuid4())
+                                
+                                # 문제 정보 저장
+                                st.session_state.teacher_problems[problem_id] = {
+                                    "title": row["title"],
+                                    "description": row["description"],
+                                    "difficulty": row["difficulty"] if row["difficulty"] in ["쉬움", "중간", "어려움"] else "중간",
+                                    "expected_time": int(row["expected_time"]) if 5 <= int(row["expected_time"]) <= 60 else 10,
+                                    "created_by": st.session_state.username,
+                                    "created_at": datetime.datetime.now().isoformat()
+                                }
+                                success_count += 1
+                            except Exception:
+                                error_count += 1
+                        
+                        # JSON 파일에 저장
+                        with open("teacher_problems.json", "w") as f:
+                            json.dump(st.session_state.teacher_problems, f)
+                        
+                        if error_count > 0:
+                            st.warning(f"{success_count}개 문제가 성공적으로 등록되었습니다. {error_count}개 문제는 오류로 인해 등록되지 않았습니다.")
+                        else:
+                            st.success(f"{success_count}개 문제가 성공적으로 등록되었습니다.")
+                
+                except Exception as e:
+                    st.error(f"CSV 파일 처리 중 오류가 발생했습니다: {str(e)}")
         
-        with col2:
-            expected_time = st.number_input("예상 풀이 시간(분):", min_value=1, max_value=120, value=10)
-        
-        if st.button("문제 저장"):
-            if not problem_title or not problem_description:
-                st.error("문제 제목과 내용을 모두 입력해주세요.")
+        elif creation_method == "AI 문제 자동 생성":
+            st.subheader("AI 문제 자동 생성")
+            
+            if not has_openai or not st.session_state.openai_api_key:
+                st.warning("OpenAI API 키가 설정되지 않았습니다. 관리자 대시보드에서 API 키를 설정해주세요.")
             else:
-                # 문제 ID 생성
-                problem_id = f"p_{int(time.time())}_{username}"
+                st.info("AI가 영어 문제를 자동으로 생성합니다. 원하는 설정을 입력하세요.")
                 
-                # 문제 데이터 저장
-                st.session_state.teacher_problems[problem_id] = {
-                    "title": problem_title,
-                    "description": problem_description,
-                    "level": problem_level,
-                    "expected_time": expected_time,
-                    "created_by": username,
-                    "created_at": datetime.datetime.now().isoformat()
-                }
+                topic_category = st.selectbox(
+                    "주제 카테고리:",
+                    ["일상 생활", "학교 생활", "취미와 관심사", "환경과 사회", "문화와 예술", "과학과 기술"]
+                )
                 
-                # 파일에 저장
-                with open("teacher_problems.json", "w") as f:
-                    json.dump(st.session_state.teacher_problems, f)
+                difficulty = st.selectbox("난이도:", ["쉬움", "중간", "어려움"])
                 
-                st.success("문제가 성공적으로 저장되었습니다.")
+                problem_type = st.selectbox(
+                    "문제 유형:",
+                    ["작문 문제", "번역 문제", "독해 문제", "문법 문제", "어휘 문제"]
+                )
+                
+                generate_button = st.button("AI 문제 생성")
+                
+                if generate_button:
+                    with st.spinner("AI가 문제를 생성하고 있습니다..."):
+                        try:
+                            client = openai.OpenAI(api_key=st.session_state.openai_api_key)
+                            
+                            prompt = f"""
+                            영어 교육용 {difficulty} 난이도의 '{topic_category}' 주제에 관한 '{problem_type}'을 생성해주세요.
+                            
+                            다음 형식으로 응답해주세요:
+                            제목: [문제 제목]
+                            내용: [문제 내용]
+                            예상 시간: [학생이 풀이하는데 필요한 예상 시간(분)]
+                            
+                            문제는 한국 고등학생 수준에 맞게 작성해주세요.
+                            """
+                            
+                            response = client.chat.completions.create(
+                                model="gpt-3.5-turbo",
+                                messages=[
+                                    {"role": "system", "content": "You are an English teacher creating problems for Korean high school students."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                max_tokens=500
+                            )
+                            
+                            generated_content = response.choices[0].message.content
+                            
+                            # AI 응답에서 제목, 내용, 예상 시간 추출
+                            title_match = re.search(r"제목:\s*(.*?)(?:\n|$)", generated_content)
+                            content_match = re.search(r"내용:\s*(.*?)(?:\n예상 시간:|$)", generated_content, re.DOTALL)
+                            time_match = re.search(r"예상 시간:\s*(\d+)", generated_content)
+                            
+                            if title_match and content_match:
+                                generated_title = title_match.group(1).strip()
+                                generated_content = content_match.group(1).strip()
+                                generated_time = int(time_match.group(1)) if time_match else 10
+                                
+                                st.success("AI가 문제를 생성했습니다!")
+                                
+                                with st.expander("생성된 문제 미리보기", expanded=True):
+                                    st.subheader(generated_title)
+                                    st.write(generated_content)
+                                    st.write(f"예상 풀이 시간: {generated_time}분")
+                                
+                                if st.button("이 문제 저장하기"):
+                                    # 고유 ID 생성
+                                    problem_id = str(uuid.uuid4())
+                                    
+                                    # 문제 정보 저장
+                                    st.session_state.teacher_problems[problem_id] = {
+                                        "title": generated_title,
+                                        "description": generated_content,
+                                        "difficulty": difficulty,
+                                        "expected_time": generated_time,
+                                        "created_by": st.session_state.username,
+                                        "created_at": datetime.datetime.now().isoformat(),
+                                        "ai_generated": True
+                                    }
+                                    
+                                    # JSON 파일에 저장
+                                    with open("teacher_problems.json", "w") as f:
+                                        json.dump(st.session_state.teacher_problems, f)
+                                    
+                                    st.success(f"AI 생성 문제 '{generated_title}'이(가) 성공적으로 저장되었습니다.")
+                            else:
+                                st.error("AI 응답에서 문제 정보를 추출하는데 실패했습니다. 다시 시도해주세요.")
+                        
+                        except Exception as e:
+                            st.error(f"AI 문제 생성 중 오류가 발생했습니다: {str(e)}")
     
     elif menu == "문제 목록":
         st.header("내 문제 목록")
@@ -1411,23 +1580,35 @@ def student_dashboard():
     # 사이드바 - 학생 메뉴
     st.sidebar.title("학생 메뉴")
     
+    # 기본 메뉴 선택 옵션 (첫 로그인 시 문제 풀기 페이지를 기본으로 보여줌)
+    if "student_menu" not in st.session_state:
+        st.session_state.student_menu = "문제 풀기"
+    
     menu = st.sidebar.radio(
         "메뉴 선택:",
-        ["내 정보", "문제 풀기", "내 기록"]
+        ["내 정보", "문제 풀기", "내 기록"],
+        index=["내 정보", "문제 풀기", "내 기록"].index(st.session_state.student_menu)
     )
     
-    if menu == "내 정보":
-        student_my_info()
-    elif menu == "문제 풀기":
-        student_problem_solving()
-    elif menu == "내 기록":
-        student_records_view()
+    # 현재 선택된 메뉴 저장
+    st.session_state.student_menu = menu
     
     # 로그아웃 버튼
     logout_button = st.sidebar.button("로그아웃")
     if logout_button:
         logout_user()
         st.rerun()
+    
+    # 선택된 메뉴에 따라 페이지 렌더링
+    if menu == "내 정보":
+        student_my_info()
+    elif menu == "문제 풀기":
+        if "problem_solving_id" in st.session_state:
+            display_and_solve_problem()
+        else:
+            student_problem_solving()
+    elif menu == "내 기록":
+        student_records_view()
 
 def student_my_info():
     st.header("내 정보")
