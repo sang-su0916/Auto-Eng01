@@ -125,16 +125,22 @@ def hash_password(password):
         return hashlib.sha256(password.encode()).hexdigest()
 
 def verify_password(plain_password, hashed_password):
-    """평문 비밀번호가 해시된 비밀번호와 일치하는지 검증합니다."""
-    if USING_PASSLIB and pbkdf2_sha256 and '$' in hashed_password:
-        try:
-            return pbkdf2_sha256.verify(plain_password, hashed_password)
-        except Exception:
-            # 실패하면 기본 방식으로 비교
-            return hash_password(plain_password) == hashed_password
-    else:
-        # 기본 방식으로 비교
-        return hash_password(plain_password) == hashed_password
+    """
+    비밀번호 검증 함수
+    plain_password: 사용자가 입력한 비밀번호
+    hashed_password: 저장된 해시된 비밀번호
+    """
+    try:
+        # 해시된 비밀번호가 없는 경우 (예: 기본 계정)
+        if not hashed_password or hashed_password == plain_password:
+            return plain_password == hashed_password
+            
+        # pbkdf2_sha256로 해시된 비밀번호 검증
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        print(f"비밀번호 검증 오류: {str(e)}")
+        # 기본 문자열 비교
+        return plain_password == hashed_password
 
 def save_users_data():
     try:
@@ -1852,32 +1858,60 @@ def main():
 # 앱 초기화 함수
 def init_app():
     # 세션 상태 변수 초기화
-    if "username" not in st.session_state:
-        st.session_state.username = None
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized = False
     
-    # 필요한 디렉토리 생성
-    os.makedirs("data", exist_ok=True)
-    os.makedirs("uploads", exist_ok=True)
-    
-    # 사용자 데이터 로드
-    if 'users' not in st.session_state:
-        load_users_data()
-    
-    # 초기 관리자 계정 생성 (필요한 경우)
-    if not any(user.get("role") == "admin" for user in st.session_state.users.values()):
-        # 기본 관리자 계정 생성
-        admin_password = hash_password("admin123")
-        st.session_state.users["admin"] = {
-            "username": "admin",
-            "password_hash": admin_password,
-            "name": "관리자",
-            "role": "admin",
-            "email": "admin@example.com",
-            "created_at": datetime.now().isoformat(),
-            "created_by": "system"
+    if not st.session_state.initialized:
+        # 기본 사용자 데이터 초기화
+        st.session_state.users = {
+            'admin': {
+                'username': 'admin',
+                'password': 'admin',  # 기본 비밀번호
+                'role': 'admin',
+                'name': '관리자',
+                'email': 'admin@example.com'
+            },
+            'teacher': {
+                'username': 'teacher',
+                'password': 'teacher',  # 기본 비밀번호
+                'role': 'teacher',
+                'name': '선생님',
+                'email': 'teacher@example.com'
+            },
+            'student': {
+                'username': 'student',
+                'password': 'student',  # 기본 비밀번호
+                'role': 'student',
+                'name': '학생',
+                'email': 'student@example.com'
+            }
         }
-        save_users_data()
         
+        # 필요한 디렉토리 생성
+        os.makedirs("data", exist_ok=True)
+        os.makedirs("uploads", exist_ok=True)
+        
+        # 사용자 데이터 로드
+        if 'users' not in st.session_state:
+            load_users_data()
+        
+        # 초기 관리자 계정 생성 (필요한 경우)
+        if not any(user.get("role") == "admin" for user in st.session_state.users.values()):
+            # 기본 관리자 계정 생성
+            admin_password = hash_password("admin123")
+            st.session_state.users["admin"] = {
+                "username": "admin",
+                "password_hash": admin_password,
+                "name": "관리자",
+                "role": "admin",
+                "email": "admin@example.com",
+                "created_at": datetime.now().isoformat(),
+                "created_by": "system"
+            }
+            save_users_data()
+        
+        st.session_state.initialized = True
+
 # 데이터 로드 함수
 def load_users_data():
     try:
@@ -2414,7 +2448,6 @@ def save_student_records():
 
 # 로그인 페이지 함수
 def login_page():
-    # CSS 스타일 적용
     st.markdown("""
         <style>
         .login-container {
@@ -2430,19 +2463,10 @@ def login_page():
             text-align: center;
             margin-bottom: 30px;
         }
-        .login-input {
-            margin-bottom: 15px;
-        }
-        .login-button {
-            width: 100%;
-            margin-top: 10px;
-        }
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    
-    # 로고와 타이틀
     st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🎓 학습 관리 시스템</h1>", unsafe_allow_html=True)
     
     # 로그인 폼
@@ -2454,11 +2478,15 @@ def login_page():
         if not username or not password:
             st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
+            # 사용자 확인
             if username in st.session_state.users:
                 user_data = st.session_state.users[username]
-                if verify_password(password, user_data["password"]):
+                stored_password = user_data.get('password', '')
+                
+                # 비밀번호 검증
+                if verify_password(password, stored_password):
                     st.session_state.username = username
-                    role = user_data["role"]
+                    role = user_data.get('role', '')
                     
                     # 역할에 따른 환영 메시지
                     if role == "admin":
@@ -2664,208 +2692,93 @@ def admin_user_management():
 
 # 관리자 API 설정 함수
 def admin_api_settings():
-    st.header("🔑 API 키 관리")
+    st.markdown("## 🔑 API 키 관리")
     
-    # 기본 API 키 설정
-    DEFAULT_OPENAI_API_KEY = "sk-b7UOp..."  # 실제 API 키 (베타 테스트용)
-    
-    # API 키 설정 여부 확인
-    current_api_key = st.session_state.get("openai_api_key", "")
-    if not current_api_key:
-        st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
-        current_api_key = DEFAULT_OPENAI_API_KEY
-    
-    # 현재 설정된 API 키 정보 표시
-    st.subheader("API 키 상태")
-    
-    if current_api_key:
-        is_default_key = current_api_key == DEFAULT_OPENAI_API_KEY
-        
-        if is_default_key:
-            st.success("✅ 기본 API 키가 설정되어 있습니다.")
-        else:
-            st.success("✅ 사용자 지정 API 키가 설정되어 있습니다.")
+    # API 키 상태 표시
+    api_key = st.session_state.get('openai_api_key', '')
+    if api_key:
+        st.success("사용자 지정 API 키가 설정되어 있습니다.")
     else:
-        st.error("❌ OpenAI API 키가 설정되어 있지 않습니다.")
-    
-    # 탭 생성
+        st.warning("API 키가 설정되어 있지 않습니다.")
+
+    # API 키 설정 탭과 저장 옵션 탭 생성
     tab1, tab2 = st.tabs(["API 키 설정", "키 저장 옵션"])
-    
-    # API 키 설정 탭
+
     with tab1:
-        st.subheader("API 키 입력")
-        
-        new_api_key = st.text_input(
-            "OpenAI API 키",
-            value="",
-            type="password",
-            placeholder="sk-..."
-        )
+        # API 키 입력 및 설정
+        new_api_key = st.text_input("OpenAI API 키 입력:", type="password", help="API 키는 안전하게 저장됩니다.")
         
         col1, col2 = st.columns(2)
-        
         with col1:
-            if st.button("API 키 적용", key="apply_key"):
+            if st.button("API 키 설정", use_container_width=True):
                 if new_api_key:
-                    st.session_state.openai_api_key = new_api_key
-                    
-                    # OpenAI 클라이언트 초기화
-                    if has_openai:
-                        try:
-                            st.session_state.openai_client = openai.OpenAI(api_key=new_api_key)
-                            st.success("✅ API 키가 성공적으로 적용되었습니다.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ API 클라이언트 초기화 실패: {str(e)}")
-                    else:
-                        st.success("✅ API 키가 저장되었습니다.")
+                    st.session_state['openai_api_key'] = new_api_key
+                    st.success("API 키가 성공적으로 설정되었습니다.")
+                    st.rerun()
+                else:
+                    st.error("API 키를 입력해주세요.")
         
         with col2:
-            if st.button("기본 키로 복원", key="restore_key"):
-                st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
-                if has_openai:
-                    try:
-                        st.session_state.openai_client = openai.OpenAI(api_key=DEFAULT_OPENAI_API_KEY)
-                        st.success("✅ 기본 API 키가 복원되었습니다.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ API 클라이언트 초기화 실패: {str(e)}")
-                else:
-                    st.success("✅ 기본 API 키가 복원되었습니다.")
-        
-        # API 연결 테스트
-        if st.button("API 연결 테스트"):
-            api_key_to_test = new_api_key if new_api_key else current_api_key
-            
-            if not api_key_to_test:
-                st.error("테스트할 API 키가 없습니다.")
-            elif has_openai:
-                with st.spinner("API 연결 테스트 중..."):
-                    try:
-                        client = openai.OpenAI(api_key=api_key_to_test)
-                        response = client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": "Hello!"}],
-                            max_tokens=5
-                        )
-                        st.success("✅ OpenAI API 연결 성공!")
-                    except Exception as e:
-                        st.error(f"❌ OpenAI API 연결 실패: {str(e)}")
-            else:
-                st.error("❌ OpenAI 라이브러리가 설치되어 있지 않습니다. 'pip install openai' 명령으로 설치하세요.")
-    
-    # 키 저장 옵션 탭
+            if st.button("API 키 초기화", use_container_width=True):
+                if 'openai_api_key' in st.session_state:
+                    del st.session_state['openai_api_key']
+                st.success("API 키가 초기화되었습니다.")
+                st.rerun()
+
     with tab2:
-        st.subheader("API 키 저장 옵션")
-        st.info("API 키를 저장하면 앱 재시작 시 자동으로 로드됩니다.")
-        
+        st.markdown("### API 키 저장 방법 선택")
         save_option = st.radio(
-            "저장 방법 선택:",
+            "API 키 저장 방식:",
             ["저장하지 않음 (세션만 유지)", "config.json 파일에 저장", "환경 변수로 저장", ".env 파일에 저장"],
             index=0
         )
-        
-        if save_option != "저장하지 않음 (세션만 유지)" and st.button("API 키 저장"):
-            api_key = st.session_state.get("openai_api_key", "")
-            
-            if not api_key:
-                st.error("❌ 저장할 API 키가 없습니다. 먼저 API 키를 설정하세요.")
-            else:
-                if save_option == "config.json 파일에 저장":
-                    try:
-                        # 기존 config.json 파일 로드 또는 새로 생성
-                        config_data = {}
-                        if os.path.exists("config.json"):
-                            with open("config.json", "r") as f:
-                                config_data = json.load(f)
-                        
-                        # API 키 저장
-                        config_data["openai_api_key"] = api_key
-                        
-                        # 파일에 저장
-                        with open("config.json", "w") as f:
-                            json.dump(config_data, f, indent=2)
-                        
-                        st.success("✅ API 키가 config.json 파일에 저장되었습니다.")
-                    except Exception as e:
-                        st.error(f"❌ 파일 저장 중 오류 발생: {str(e)}")
-                
-                elif save_option == "환경 변수로 저장":
-                    st.info("""
-                    환경 변수 설정 방법:
-                    
-                    Windows:
-                    ```
-                    setx OPENAI_API_KEY "your-api-key"
-                    ```
-                    
-                    Linux/Mac:
-                    ```
-                    export OPENAI_API_KEY="your-api-key"
-                    ```
-                    
-                    영구적으로 저장하려면 시스템 환경 변수 설정이나 프로필 파일에 추가하세요.
-                    """)
-                    
-                    # Windows 명령어 자동 생성
-                    st.code(f'setx OPENAI_API_KEY "{api_key}"', language="batch")
-                
-                elif save_option == ".env 파일에 저장":
-                    try:
-                        # .env 파일 생성 또는 업데이트
-                        env_content = []
-                        if os.path.exists(".env"):
-                            with open(".env", "r") as f:
-                                lines = f.readlines()
-                                for line in lines:
-                                    if not line.startswith("OPENAI_API_KEY="):
-                                        env_content.append(line.strip())
-                        
-                        # API 키 추가
-                        env_content.append(f'OPENAI_API_KEY="{api_key}"')
-                        
-                        # 파일에 저장
-                        with open(".env", "w") as f:
-                            f.write("\n".join(env_content))
-                        
-                        st.success("✅ API 키가 .env 파일에 저장되었습니다.")
-                    except Exception as e:
-                        st.error(f"❌ 파일 저장 중 오류 발생: {str(e)}")
-    
-    # 하드코딩된 키 설정 탭
-    with tab3:
-        st.subheader("하드코딩된 기본 키 설정")
-        st.warning("⚠️ 주의: 이 설정은 개발 및 테스트 목적으로만 사용하세요. 실제 API 키를 소스 코드에 포함하는 것은 보안상 위험합니다.")
-        
-        st.info("""
-        하드코딩된 기본 API 키는 다음 경우에 사용됩니다:
-        
-        1. 앱이 처음 실행될 때 다른 소스(환경 변수, .env 파일, config.json)에서 API 키를 찾을 수 없는 경우
-        2. API 키 초기화 후 바로 테스트할 때 임시 키로 사용
-        
-        이 키는 실제 OpenAI API 키여야 하며, 해당 코드가 배포되지 않는 개발 환경에서만 사용해야 합니다.
-        """)
-        
-        st.code("""
-# app.py 파일에서 다음 부분을 찾아 수정합니다:
 
-# 기본 API 키 (하드코딩된 옵션)
-DEFAULT_OPENAI_API_KEY = "your_default_openai_key_here"  # 이 부분을 실제 API 키로 변경
-        """, language="python")
-        
-        if st.button("하드코딩된 키 적용 방법"):
-            st.markdown("""
-            ### 하드코딩된 키를 적용하는 방법:
+        if st.button("저장 설정 적용"):
+            if not api_key:
+                st.error("저장할 API 키가 설정되어 있지 않습니다.")
+                return
+
+            if save_option == "config.json 파일에 저장":
+                try:
+                    config = {"openai_api_key": api_key}
+                    with open("config.json", "w") as f:
+                        json.dump(config, f)
+                    st.success("API 키가 config.json 파일에 저장되었습니다.")
+                except Exception as e:
+                    st.error(f"저장 중 오류가 발생했습니다: {str(e)}")
+
+            elif save_option == "환경 변수로 저장":
+                try:
+                    os.environ["OPENAI_API_KEY"] = api_key
+                    st.success("API 키가 환경 변수에 저장되었습니다.")
+                except Exception as e:
+                    st.error(f"환경 변수 설정 중 오류가 발생했습니다: {str(e)}")
+
+            elif save_option == ".env 파일에 저장":
+                try:
+                    with open(".env", "w") as f:
+                        f.write(f"OPENAI_API_KEY={api_key}\n")
+                    st.success("API 키가 .env 파일에 저장되었습니다.")
+                except Exception as e:
+                    st.error(f"저장 중 오류가 발생했습니다: {str(e)}")
+
+    # API 연결 테스트
+    st.markdown("### API 연결 테스트")
+    if st.button("API 연결 테스트 실행"):
+        if not api_key:
+            st.error("API 키가 설정되어 있지 않습니다.")
+            return
             
-            1. app.py 파일을 텍스트 에디터로 엽니다.
-            2. `load_api_keys()` 함수를 찾습니다.
-            3. 함수 상단에 있는 `DEFAULT_OPENAI_API_KEY` 변수 값을 실제 API 키로 변경합니다.
-            4. 파일을 저장하고 앱을 재시작합니다.
-            
-            이제 다른 API 키 소스가 없는 경우 이 하드코딩된 기본 키가 사용됩니다.
-            """)
-        
-        st.warning("보안상의 이유로 이 환경에서는 하드코딩된 키를 직접 변경할 수 없습니다. 소스 코드를 직접 수정해야 합니다.")
+        try:
+            client = openai.OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "Hello!"}],
+                max_tokens=5
+            )
+            st.success("API 연결 테스트 성공!")
+        except Exception as e:
+            st.error(f"API 연결 테스트 실패: {str(e)}")
 
 # 관리자 백업/복원 함수
 def admin_backup_restore():
