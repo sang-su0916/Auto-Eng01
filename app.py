@@ -84,6 +84,15 @@ except ImportError:
     # 가짜 openai 모듈 생성
     openai = type('openai', (), {'OpenAI': DummyOpenAI})
 
+# Google AI 관련 기능
+GOOGLE_AI_AVAILABLE = False
+try:
+    import google.generativeai as genai
+    GOOGLE_AI_AVAILABLE = False  # 구글 API 사용 비활성화
+except ImportError:
+    GOOGLE_AI_AVAILABLE = False
+    # 가짜 Google AI 모듈 생성을 위한 클래스는 필요할 때 구현
+
 # 비밀번호 관련 기능
 try:
     from passlib.hash import pbkdf2_sha256
@@ -1127,7 +1136,6 @@ def parse_essay_problems(content):
 def load_api_keys():
     # 기본 API 키 (하드코딩된 옵션) - 실제 배포 시 빈 문자열로 변경하세요
     DEFAULT_OPENAI_API_KEY = "your_default_openai_key_here"  # 개발용 기본 키 (실제 사용 시 변경 필요)
-    DEFAULT_GOOGLE_API_KEY = "your_default_google_key_here"  # 개발용 기본 키 (실제 사용 시 변경 필요)
     
     # 이미 세션에 키가 있는 경우 그대로 사용
     if 'openai_api_key' not in st.session_state:
@@ -1162,38 +1170,6 @@ def load_api_keys():
         
         st.session_state.openai_api_key = openai_key
     
-    # Google API 키도 같은 방식으로 처리
-    if 'google_api_key' not in st.session_state:
-        google_key = None
-        
-        # 환경 변수에서 로드
-        google_key = os.getenv("GOOGLE_API_KEY")
-        
-        # .env 파일에서 로드 시도
-        if not google_key and is_package_available("dotenv"):
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-                google_key = os.getenv("GOOGLE_API_KEY")
-            except Exception:
-                pass
-        
-        # config.json 파일에서 로드 시도
-        if not google_key:
-            try:
-                if os.path.exists("config.json"):
-                    with open("config.json", "r") as f:
-                        config = json.load(f)
-                        google_key = config.get("google_api_key")
-            except Exception:
-                pass
-        
-        # API 키가 여전히 없으면 기본값 사용
-        if not google_key:
-            google_key = DEFAULT_GOOGLE_API_KEY
-        
-        st.session_state.google_api_key = google_key
-    
     # OpenAI 클라이언트 초기화 (openai 라이브러리가 있는 경우)
     if has_openai and st.session_state.openai_api_key:
         try:
@@ -1201,15 +1177,6 @@ def load_api_keys():
         except Exception:
             # 초기화 실패 시 클라이언트는 None으로 설정
             st.session_state.openai_client = None
-    
-    # Google AI 클라이언트 초기화 (google-generativeai 라이브러리가 있는 경우)
-    if 'google_ai_client' not in st.session_state and GOOGLE_AI_AVAILABLE and st.session_state.google_api_key:
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=st.session_state.google_api_key)
-            st.session_state.google_ai_client = genai
-        except Exception:
-            st.session_state.google_ai_client = None
 
 # 문제 저장소 로드 함수
 def load_problem_repository():
