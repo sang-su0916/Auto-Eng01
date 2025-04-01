@@ -1,17 +1,43 @@
 import os
 import json
-import datetime
-import hashlib
 import base64
-import pickle
 import time
-import zipfile
-import io
+import hashlib
 import re
-from pathlib import Path
-import uuid
-import sys
-import random
+import traceback
+from datetime import datetime
+
+# 패키지 가용성 체크
+try:
+    import streamlit as st
+except ImportError:
+    class DummySt:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+    st = DummySt()
+
+# datetime 모듈 대체 클래스 (오류 방지용)
+class DummyDatetime:
+    @staticmethod
+    def now():
+        class DummyNow:
+            def isoformat(self):
+                return "0000-00-00T00:00:00"
+        return DummyNow()
+    
+    @staticmethod
+    def fromisoformat(date_str):
+        class DummyDate:
+            def strftime(self, format_str):
+                return "0000-00-00 00:00:00"
+            
+            def date(self):
+                return "0000-00-00"
+        return DummyDate()
+
+# datetime이 없는 경우 더미로 대체
+if 'datetime' not in globals():
+    datetime = DummyDatetime
 
 # 기본 모듈 import
 import streamlit as st
@@ -129,7 +155,7 @@ def register_user(username, password, role, name, email="", created_by="system")
         "role": role,
         "name": name,
         "email": email,
-        "created_at": datetime.datetime.now().isoformat(),
+        "created_at": datetime.now().isoformat(),
         "created_by": created_by
     }
     
@@ -722,7 +748,7 @@ def student_records_view():
                         # 완료 시간 형식화
                         completed_at = problem_record.get("completed_at", "")
                         try:
-                            completed_at = datetime.datetime.fromisoformat(completed_at).strftime("%Y-%m-%d %H:%M:%S")
+                            completed_at = datetime.fromisoformat(completed_at).strftime("%Y-%m-%d %H:%M:%S")
                         except:
                             pass
                         
@@ -762,7 +788,7 @@ def student_records_view():
                         # 시작 시간 형식화
                         started_at = problem_record.get("started_at", "")
                         try:
-                            started_at = datetime.datetime.fromisoformat(started_at).strftime("%Y-%m-%d %H:%M:%S")
+                            started_at = datetime.fromisoformat(started_at).strftime("%Y-%m-%d %H:%M:%S")
                         except:
                             pass
                         
@@ -811,7 +837,7 @@ def display_and_solve_problem():
     if problem_id not in student_records["problems"]:
         student_records["problems"][problem_id] = {
             "status": "in_progress",
-            "started_at": datetime.datetime.now().isoformat(),
+            "started_at": datetime.now().isoformat(),
             "answer": "",
             "score": 0
         }
@@ -925,7 +951,7 @@ def display_and_solve_problem():
             with col1:
                 if st.button("임시 저장"):
                     problem_record["answer"] = str(option_radio)
-                    problem_record["updated_at"] = datetime.datetime.now().isoformat()
+                    problem_record["updated_at"] = datetime.now().isoformat()
                     
                     with open("student_records.json", "w") as f:
                         json.dump(st.session_state.student_records, f)
@@ -945,7 +971,7 @@ def display_and_solve_problem():
                         # 학생 기록 업데이트
                         problem_record["answer"] = str(option_radio)
                         problem_record["score"] = score
-                        problem_record["completed_at"] = datetime.datetime.now().isoformat()
+                        problem_record["completed_at"] = datetime.now().isoformat()
                         problem_record["status"] = "completed"
                         problem_record["feedback"] = f"{'정답입니다! 🎉' if score == 100 else '아쉽게도 오답입니다. 😢'}"
                         
@@ -971,7 +997,7 @@ def display_and_solve_problem():
             with col1:
                 if st.button("임시 저장"):
                     problem_record["answer"] = answer_text
-                    problem_record["updated_at"] = datetime.datetime.now().isoformat()
+                    problem_record["updated_at"] = datetime.now().isoformat()
                     
                     with open("student_records.json", "w") as f:
                         json.dump(st.session_state.student_records, f)
@@ -986,7 +1012,7 @@ def display_and_solve_problem():
                     else:
                         # 학생 기록 업데이트
                         problem_record["answer"] = answer_text
-                        problem_record["submitted_at"] = datetime.datetime.now().isoformat()
+                        problem_record["submitted_at"] = datetime.now().isoformat()
                         problem_record["status"] = "submitted"
                         
                         with open("student_records.json", "w") as f:
@@ -1352,7 +1378,7 @@ def student_problem_repository_view():
                             "description": problem.get("content", ""),
                             "difficulty": problem.get("difficulty", "보통"),
                             "created_by": problem.get("created_by", "system"),
-                            "created_at": problem.get("created_at", datetime.now().isoformat()),
+                            "created_at": datetime.now().isoformat(),
                             "problem_type": "multiple_choice" if problem.get("type") == "객관식" else "essay",
                             "subject": problem.get("subject", "기타"),
                             "from_repository": True
@@ -3105,4 +3131,18 @@ def is_package_available(package_name):
 
 # 앱 실행
 if __name__ == "__main__":
-    main() 
+    try:
+        main()
+    except Exception as e:
+        # 오류 메시지 출력
+        error_msg = f"오류가 발생했습니다: {str(e)}"
+        traceback_str = traceback.format_exc()
+        
+        # 스트림릿이 사용 가능한 경우 오류 메시지 표시
+        if 'st' in globals() and hasattr(st, 'error'):
+            st.error(error_msg)
+            st.error(traceback_str)
+        else:
+            # 콘솔에 오류 메시지 출력
+            print(error_msg)
+            print(traceback_str) 
