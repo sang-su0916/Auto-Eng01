@@ -1684,9 +1684,7 @@ def teacher_problem_creation():
                 ["쉬움", "보통", "어려움"]
             )
         
-        ai_topic = st.text_input("주제(구체적일수록 좋습니다):", value="임의대로", help="비워두면 '임의대로'로 설정됩니다")
-        if not ai_topic.strip():
-            ai_topic = "임의대로"
+        ai_topic = st.text_input("주제(구체적일수록 좋습니다):", "")
         
         ai_problem_type = st.radio(
             "문제 유형:",
@@ -1697,111 +1695,126 @@ def teacher_problem_creation():
         
         # 문제 생성 버튼
         if st.button("AI로 문제 생성"):
-            with st.spinner("AI가 문제를 생성 중입니다... (최대 1분 소요)"):
-                try:
-                    # OpenAI API 호출
-                    client = openai.OpenAI(api_key=st.session_state.openai_api_key)
-                    
-                    # 프롬프트 생성
-                    system_prompt = f"""
-                    당신은 교육 전문가로서 학생들을 위한 고품질 문제를 생성합니다.
-                    다음 조건에 맞는 {problem_count}개의 문제를 생성해 주세요:
-                    - 과목: {ai_subject}
-                    - 학교: {ai_school_type}
-                    - 학년: {ai_grade}학년
-                    - 난이도: {ai_difficulty}
-                    - 주제: {ai_topic}
-                    - 문제 유형: {ai_problem_type}
-                    
-                    문제 형식은 다음과 같이 제공해 주세요:
-                    """
-                    
-                    if ai_problem_type == "객관식":
-                        system_prompt += """
-                        문제 1:
-                        제목: [문제 제목]
-                        내용: [문제 내용]
-                        보기1: [선택지 1]
-                        보기2: [선택지 2]
-                        보기3: [선택지 3]
-                        보기4: [선택지 4]
-                        정답: [정답 번호(1~4)]
-                        해설: [문제 해설]
-                        예상 시간: [풀이 예상 시간(분)]
+            if not ai_topic:
+                st.error("주제를 입력해주세요.")
+            else:
+                with st.spinner("AI가 문제를 생성 중입니다... (최대 1분 소요)"):
+                    try:
+                        # OpenAI API 호출
+                        client = openai.OpenAI(api_key=st.session_state.openai_api_key)
                         
-                        문제 2:
-                        ...
-                        """
-                    else:
-                        system_prompt += """
-                        문제 1:
-                        제목: [문제 제목]
-                        내용: [문제 내용]
-                        예시 답안: [모범 답안]
-                        채점 기준: [채점 기준]
-                        예상 시간: [풀이 예상 시간(분)]
+                        # 프롬프트 생성
+                        system_prompt = f"""
+                        당신은 교육 전문가로서 학생들을 위한 고품질 문제를 생성합니다.
+                        다음 조건에 맞는 {problem_count}개의 문제를 생성해 주세요:
+                        - 과목: {ai_subject}
+                        - 학교: {ai_school_type}
+                        - 학년: {ai_grade}학년
+                        - 난이도: {ai_difficulty}
+                        - 주제: {ai_topic}
+                        - 문제 유형: {ai_problem_type}
                         
-                        문제 2:
-                        ...
+                        문제 형식은 다음과 같이 제공해 주세요:
                         """
-                    
-                    # API 호출
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": f"{ai_subject} {ai_school_type} {ai_grade}학년 학생들을 위한 {ai_topic} 관련 {ai_problem_type} {problem_count}개를 생성해 주세요."}
-                        ],
-                        temperature=0.7,
-                        max_tokens=2000
-                    )
-                    
-                    # 응답 처리
-                    generated_content = response.choices[0].message.content
-                    
-                    st.subheader("생성된 문제")
-                    st.write(generated_content)
-                    
-                    # 생성된 문제 파싱 및 저장
-                    st.info("""
-                    💾 문제 저장 안내:
-                    1. 생성된 문제는 자동으로 파싱되어 교사의 문제 저장소에 저장됩니다.
-                    2. 저장된 문제는 'data/teacher_problems.json' 파일에 보관됩니다.
-                    3. 저장된 문제는 '문제 저장소' 메뉴에서 확인할 수 있습니다.
-                    """)
-                    
-                    if st.button("생성된 문제 저장", key="save_generated"):
-                        problems = []
-                        try:
-                            if ai_problem_type == "객관식":
-                                problems = parse_multiple_choice_problems(generated_content)
-                            else:
-                                problems = parse_essay_problems(generated_content)
+                        
+                        if ai_problem_type == "객관식":
+                            system_prompt += """
+                            문제 1:
+                            제목: [문제 제목]
+                            내용: [문제 내용]
+                            보기1: [선택지 1]
+                            보기2: [선택지 2]
+                            보기3: [선택지 3]
+                            보기4: [선택지 4]
+                            정답: [정답 번호(1~4)]
+                            해설: [문제 해설]
+                            예상 시간: [풀이 예상 시간(분)]
                             
-                            # 교사의 문제 목록 초기화
-                            if st.session_state.username not in st.session_state.teacher_problems:
-                                st.session_state.teacher_problems[st.session_state.username] = []
+                            문제 2:
+                            ...
+                            """
+                        else:
+                            system_prompt += """
+                            문제 1:
+                            제목: [문제 제목]
+                            내용: [문제 내용]
+                            예시 답안: [모범 답안]
+                            채점 기준: [채점 기준]
+                            예상 시간: [풀이 예상 시간(분)]
                             
-                            # 문제 추가
-                            for problem in problems:
-                                problem["created_by"] = st.session_state.username
-                                problem["created_at"] = datetime.now().isoformat()
-                                st.session_state.teacher_problems[st.session_state.username].append(problem)
+                            문제 2:
+                            ...
+                            """
+                        
+                        # API 호출
+                        response = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": f"{ai_subject} {ai_school_type} {ai_grade}학년 학생들을 위한 {ai_topic} 관련 {ai_problem_type} {problem_count}개를 생성해 주세요."}
+                            ],
+                            temperature=0.7,
+                            max_tokens=2000
+                        )
+                        
+                        # 응답 처리
+                        generated_content = response.choices[0].message.content
+                        
+                        st.subheader("생성된 문제")
+                        st.write(generated_content)
+                        
+                        # 생성된 문제 파싱 및 저장 옵션
+                        if st.button("생성된 문제 저장"):
+                            problems = []
                             
-                            # 변경사항 저장
-                            save_teacher_problems()
-                            st.success(f"{len(problems)}개의 문제가 성공적으로 저장되었습니다!")
-                            
-                            # 저장 위치 안내
-                            st.info("저장된 문제는 '문제 저장소' 메뉴에서 확인할 수 있습니다.")
-                            time.sleep(2)
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"문제 저장 중 오류가 발생했습니다: {str(e)}")
-                
-                except Exception as e:
-                    st.error(f"AI 문제 생성 중 오류가 발생했습니다: {str(e)}")
+                            try:
+                                if ai_problem_type == "객관식":
+                                    problems = parse_multiple_choice_problems(generated_content)
+                                else:
+                                    problems = parse_essay_problems(generated_content)
+                                
+                                # 교사의 문제 목록 초기화
+                                if st.session_state.username not in st.session_state.teacher_problems:
+                                    st.session_state.teacher_problems[st.session_state.username] = []
+                                
+                                # 파싱된 문제 처리
+                                success_count = 0
+                                for problem in problems:
+                                    # 기본 정보 추가
+                                    problem["id"] = str(uuid.uuid4())
+                                    problem["subject"] = ai_subject
+                                    problem["school_type"] = ai_school_type
+                                    problem["grade"] = ai_grade
+                                    problem["difficulty"] = ai_difficulty
+                                    problem["created_by"] = st.session_state.username
+                                    problem["created_at"] = datetime.now().isoformat()
+                                    
+                                    # 문제 유형 설정
+                                    if ai_problem_type == "객관식":
+                                        problem["problem_type"] = "multiple_choice"
+                                    else:
+                                        problem["problem_type"] = "essay" if ai_problem_type == "주관식" else "long_essay"
+                                    
+                                    # 추가
+                                    st.session_state.teacher_problems[st.session_state.username].append(problem)
+                                    success_count += 1
+                                
+                                # 변경사항 저장
+                                save_teacher_problems()
+                                
+                                if success_count > 0:
+                                    st.success(f"{success_count}개의 문제가 성공적으로 저장되었습니다!")
+                                else:
+                                    st.warning("저장된 문제가 없습니다. 파싱에 실패했을 수 있습니다.")
+                                
+                                time.sleep(2)
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"문제 파싱 중 오류가 발생했습니다: {e}")
+                        
+                    except Exception as e:
+                        st.error(f"AI 문제 생성 중 오류가 발생했습니다: {e}")
 
 def main():
     # 앱 초기화
@@ -1844,46 +1857,59 @@ def main():
 
 # 앱 초기화 함수
 def init_app():
-    """앱 초기화 함수"""
-    if "initialized" not in st.session_state:
+    # 세션 상태 변수 초기화
+    if 'initialized' not in st.session_state:
         st.session_state.initialized = False
-        st.session_state.username = None
-        st.session_state.users = {}
-        
+    
     if not st.session_state.initialized:
         # 기본 사용자 데이터 초기화
-        default_users = {
+        st.session_state.users = {
             'admin': {
                 'username': 'admin',
-                'password': 'admin',
+                'password': 'admin',  # 기본 비밀번호
                 'role': 'admin',
-                'name': '관리자'
+                'name': '관리자',
+                'email': 'admin@example.com'
             },
             'teacher': {
                 'username': 'teacher',
-                'password': 'teacher',
+                'password': 'teacher',  # 기본 비밀번호
                 'role': 'teacher',
-                'name': '선생님'
+                'name': '선생님',
+                'email': 'teacher@example.com'
             },
             'student': {
                 'username': 'student',
-                'password': 'student',
+                'password': 'student',  # 기본 비밀번호
                 'role': 'student',
-                'name': '학생'
+                'name': '학생',
+                'email': 'student@example.com'
             }
         }
         
-        # 기존 사용자 데이터가 있으면 로드
-        if os.path.exists('users.json'):
-            try:
-                with open('users.json', 'r', encoding='utf-8') as f:
-                    st.session_state.users = json.load(f)
-            except:
-                st.session_state.users = default_users
-        else:
-            st.session_state.users = default_users
-            
-        # 초기화 완료 표시
+        # 필요한 디렉토리 생성
+        os.makedirs("data", exist_ok=True)
+        os.makedirs("uploads", exist_ok=True)
+        
+        # 사용자 데이터 로드
+        if 'users' not in st.session_state:
+            load_users_data()
+        
+        # 초기 관리자 계정 생성 (필요한 경우)
+        if not any(user.get("role") == "admin" for user in st.session_state.users.values()):
+            # 기본 관리자 계정 생성
+            admin_password = hash_password("admin123")
+            st.session_state.users["admin"] = {
+                "username": "admin",
+                "password_hash": admin_password,
+                "name": "관리자",
+                "role": "admin",
+                "email": "admin@example.com",
+                "created_at": datetime.now().isoformat(),
+                "created_by": "system"
+            }
+            save_users_data()
+        
         st.session_state.initialized = True
 
 # 데이터 로드 함수
@@ -2422,61 +2448,45 @@ def save_student_records():
 
 # 로그인 페이지 함수
 def login_page():
-    """로그인 페이지"""
     st.markdown("""
         <style>
-        .main-title {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 2rem;
-        }
-        .main-title h1 {
-            font-size: 24px;
-            color: #333;
-            margin: 0;
-        }
-        .stTextInput > div > div > input {
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 10px;
             background-color: #f8f9fa;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        .stButton > button {
-            width: 100%;
-            margin-top: 1rem;
-        }
-        .demo-info {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 5px;
-            margin-top: 1rem;
+        .login-title {
+            color: #1f1f1f;
+            text-align: center;
+            margin-bottom: 30px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # 메인 타이틀
-    col1, col2 = st.columns([1, 6])
-    with col1:
-        st.image("🎓", width=50)
-    with col2:
-        st.markdown("<h1>학습 관리 시스템</h1>", unsafe_allow_html=True)
-
-    # 로그인 폼
-    st.markdown("아이디")
-    username = st.text_input("", placeholder="아이디를 입력하세요", key="username", label_visibility="collapsed")
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🎓 학습 관리 시스템</h1>", unsafe_allow_html=True)
     
-    st.markdown("비밀번호")
-    password = st.text_input("", type="password", placeholder="비밀번호를 입력하세요", key="password", label_visibility="collapsed")
-
+    # 로그인 폼
+    username = st.text_input("아이디", placeholder="아이디를 입력하세요")
+    password = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+    
     # 로그인 버튼
     if st.button("로그인", use_container_width=True):
         if not username or not password:
             st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
+            # 사용자 확인
             if username in st.session_state.users:
                 user_data = st.session_state.users[username]
-                if user_data['password'] == password:
+                stored_password = user_data.get('password', '')
+                
+                # 비밀번호 검증
+                if verify_password(password, stored_password):
                     st.session_state.username = username
-                    role = user_data['role']
+                    role = user_data.get('role', '')
                     
                     # 역할에 따른 환영 메시지
                     if role == "admin":
@@ -2492,42 +2502,17 @@ def login_page():
                     st.error("비밀번호가 일치하지 않습니다.")
             else:
                 st.error("존재하지 않는 아이디입니다.")
-
+    
     # 데모 계정 정보
     with st.expander("데모 계정 정보"):
-        st.markdown("""
+        st.info("""
         🔑 데모 계정:
-        
         - 관리자: admin / admin
         - 교사: teacher / teacher
         - 학생: student / student
         """)
-
-    with tab2:
-        st.markdown("### 👨‍🏫 교사 계정 신청")
-        st.info("교사 계정은 관리자 승인 후 사용할 수 있습니다.")
-        
-        new_name = st.text_input("이름:", key="register_name", placeholder="실명을 입력하세요")
-        new_username = st.text_input("사용할 아이디:", key="register_username", placeholder="사용할 아이디를 입력하세요")
-        new_password = st.text_input("비밀번호:", type="password", key="register_password", placeholder="비밀번호를 입력하세요")
-        confirm_password = st.text_input("비밀번호 확인:", type="password", key="confirm_password", placeholder="비밀번호를 다시 입력하세요")
-        
-        if st.button("계정 신청"):
-            if not new_name or not new_username or not new_password or not confirm_password:
-                st.error("모든 필드를 입력해주세요.")
-            elif new_password != confirm_password:
-                st.error("비밀번호가 일치하지 않습니다.")
-            elif new_username in st.session_state.users:
-                st.error("이미 사용 중인 아이디입니다.")
-            else:
-                st.session_state.users[new_username] = {
-                    'username': new_username,
-                    'password': new_password,
-                    'name': new_name,
-                    'role': 'pending_teacher'
-                }
-                save_users_data()
-                st.success("교사 계정 신청이 완료되었습니다. 관리자 승인을 기다려주세요.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # 관리자 대시보드 함수
 def admin_dashboard():
