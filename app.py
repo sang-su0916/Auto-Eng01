@@ -298,150 +298,121 @@ def teacher_problem_repository():
                             st.markdown(f"{j+1}. {option}")
                         st.markdown(f"**정답:** {problem.get('answer', '정답 없음')}")
                     else:
-                        if "answer" in problem:
-                            st.markdown("**정답 예시:**")
-                            st.markdown(problem.get("answer", "정답 없음"))
+                        st.markdown(f"**정답:** {problem.get('answer', '정답 없음')}")
                     
-                    if "explanation" in problem and problem["explanation"]:
-                        st.markdown("**해설:**")
-                        st.markdown(problem.get("explanation", "해설 없음"))
-                    
-                    # 내 문제 목록에 추가 버튼
-                    if st.button(f"내 문제 목록에 추가", key=f"add_to_my_problems_{i}"):
-                        # 이미 내 문제 목록에 있는지 확인
-                        existing_problem = False
-                        for teacher_problem in st.session_state.teacher_problems.get(st.session_state.username, []):
-                            if teacher_problem.get("title") == problem.get("title") and teacher_problem.get("content") == problem.get("content"):
-                                existing_problem = True
-                                break
+                    # 내 문제 저장소에 추가 버튼
+                    if st.button("내 문제 저장소에 추가", key=f"add_to_mine_{i}"):
+                        # 사용자 문제 저장소에 추가
+                        if "teacher_problems" not in st.session_state:
+                            st.session_state.teacher_problems = {}
                         
-                        if existing_problem:
-                            st.error("이미 내 문제 목록에 있는 문제입니다.")
-                        else:
-                            # 교사의 문제 목록에 추가
-                            if st.session_state.username not in st.session_state.teacher_problems:
-                                st.session_state.teacher_problems[st.session_state.username] = []
-                            
-                            # 문제 복사본 생성 및 내 문제에 추가
-                            new_problem = problem.copy()
-                            new_problem["imported_from_repository"] = True
-                            new_problem["original_author"] = problem.get("created_by", "알 수 없음")
-                            new_problem["created_by"] = st.session_state.username
-                            new_problem["created_at"] = datetime.now().isoformat()
-                            
-                            st.session_state.teacher_problems[st.session_state.username].append(new_problem)
-                            
-                            # 변경사항 저장
-                            save_teacher_problems()
-                            
-                            st.success("내 문제 목록에 추가되었습니다!")
-                            st.rerun()
+                        # 현재 사용자의 문제 저장소
+                        username = st.session_state.username
+                        if username not in st.session_state.teacher_problems:
+                            st.session_state.teacher_problems[username] = {
+                                "problems": []
+                            }
+                        
+                        # 문제 추가
+                        problem_copy = problem.copy()
+                        problem_copy["id"] = str(uuid.uuid4())
+                        
+                        st.session_state.teacher_problems[username]["problems"].append(problem_copy)
+                        
+                        # 저장
+                        save_teacher_problems()
+                        
+                        st.success("문제가 내 저장소에 추가되었습니다.")
     
     # 내 문제 저장소에 추가 탭
     with tab2:
-        st.subheader("내 문제를 저장소에 추가")
+        st.subheader("내 문제 저장소에 추가")
         
-        # 교사의 문제 목록 가져오기
-        teacher_problems = st.session_state.teacher_problems.get(st.session_state.username, [])
+        if "problem_repository" not in st.session_state:
+            st.session_state.problem_repository = {"problems": []}
         
-        if not teacher_problems:
-            st.warning("등록한 문제가 없습니다. '문제 출제' 메뉴에서 먼저 문제를 만들어주세요.")
-        else:
-            st.success(f"{len(teacher_problems)}개의 문제가 있습니다.")
+        # 문제 정보 입력
+        problem_title = st.text_input("문제 제목", key="repo_problem_title")
+        
+        # 과목 선택
+        subject_options = ["수학", "영어", "국어", "과학", "사회", "기타"]
+        problem_subject = st.selectbox("과목", subject_options, key="repo_problem_subject")
+        
+        # 난이도 선택
+        difficulty_options = ["쉬움", "보통", "어려움"]
+        problem_difficulty = st.selectbox("난이도", difficulty_options, index=1, key="repo_problem_difficulty")
+        
+        # 문제 유형 선택
+        problem_type = st.radio("문제 유형", ["객관식", "주관식"], key="repo_problem_type")
+        
+        # 문제 내용
+        problem_content = st.text_area("문제 내용", height=150, key="repo_problem_content")
+        
+        # 객관식인 경우 선택지 추가
+        if problem_type == "객관식":
+            options = []
             
-            # 저장소에 추가할 문제 선택
-            selected_problem_idx = st.selectbox(
-                "저장소에 추가할 문제 선택:",
-                range(len(teacher_problems)),
-                format_func=lambda i: f"[{teacher_problems[i].get('subject', '기타')}] {teacher_problems[i].get('title', '제목 없음')}"
-            )
+            for i in range(5):  # 5개 선택지
+                option = st.text_input(f"선택지 {i+1}", key=f"repo_option_{i}")
+                if option:
+                    options.append(option)
             
-            selected_problem = teacher_problems[selected_problem_idx]
-            
-            # 선택한 문제 정보 표시
-            st.markdown("---")
-            st.markdown("**선택한 문제 정보:**")
-            st.markdown(f"**제목:** {selected_problem.get('title', '제목 없음')}")
-            st.markdown(f"**난이도:** {selected_problem.get('difficulty', '보통')}")
-            st.markdown(f"**내용:** {selected_problem.get('content', '내용 없음')}")
-            
-            # 저장소에 추가하기 전에 문제 정보 편집
-            st.markdown("---")
-            st.markdown("**저장소 등록 정보 편집:**")
-            
-            # 기본값은 선택한 문제의 정보를 사용
-            repo_title = st.text_input("제목", value=selected_problem.get("title", ""))
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                repo_difficulty = st.selectbox(
-                    "난이도",
-                    ["쉬움", "보통", "어려움"],
-                    index=["쉬움", "보통", "어려움"].index(selected_problem.get("difficulty", "보통"))
-                )
-            
-            with col2:
-                repo_subject = st.selectbox(
-                    "과목",
-                    ["수학", "영어", "국어", "과학", "사회", "기타"],
-                    index=["수학", "영어", "국어", "과학", "사회", "기타"].index(selected_problem.get("subject", "기타")) 
-                    if selected_problem.get("subject") in ["수학", "영어", "국어", "과학", "사회", "기타"] else 5
-                )
-            
-            repo_content = st.text_area("문제 내용", value=selected_problem.get("content", ""))
-            
-            # 문제 유형에 따라 다른 필드 표시
-            if selected_problem.get("type") == "객관식":
-                # 객관식 문제일 경우
-                st.markdown("**선택지:**")
-                repo_options = []
-                
-                for i, option in enumerate(selected_problem.get("options", [])):
-                    repo_options.append(st.text_input(f"선택지 {i+1}", value=option, key=f"repo_option_{i}"))
-                
-                repo_answer = st.text_input("정답", value=selected_problem.get("answer", ""))
+            # 정답 선택
+            if options:
+                answer = st.selectbox("정답", [f"{i+1}. {option}" for i, option in enumerate(options)], key="repo_answer_mc")
+                answer_index = int(answer.split('.')[0])
             else:
-                # 주관식 문제일 경우
-                repo_answer = st.text_area("정답 예시", value=selected_problem.get("answer", ""))
-            
-            repo_explanation = st.text_area("문제 해설", value=selected_problem.get("explanation", ""))
-            
-            # 저장소에 추가 버튼
-            if st.button("저장소에 문제 추가", type="primary"):
-                if not repo_title:
-                    st.error("제목을 입력해주세요.")
-                elif not repo_content:
-                    st.error("문제 내용을 입력해주세요.")
-                else:
-                    # 저장소에 추가할 문제 생성
-                    repo_problem = {
-                        "id": str(uuid.uuid4()),
-                        "title": repo_title,
-                        "content": repo_content,
-                        "difficulty": repo_difficulty,
-                        "subject": repo_subject,
-                        "type": selected_problem.get("type", "주관식"),
-                        "created_by": st.session_state.username,
-                        "created_at": datetime.now().isoformat(),
-                        "explanation": repo_explanation
-                    }
-                    
-                    # 문제 유형에 따라 다른 필드 추가
-                    if selected_problem.get("type") == "객관식":
-                        repo_problem["options"] = [opt for opt in repo_options if opt]
-                        repo_problem["answer"] = repo_answer
+                answer_index = 0
+        else:
+            # 주관식 정답
+            answer = st.text_input("정답", key="repo_answer_sa")
+            options = []
+            answer_index = 0
+        
+        # 문제 저장
+        if st.button("문제 저장소에 추가", key="repo_add_problem"):
+            if not problem_title or not problem_content:
+                st.error("제목과 내용은 필수 입력 항목입니다.")
+            else:
+                # 문제 ID 생성
+                problem_id = str(uuid.uuid4())
+                
+                # 문제 정보 저장
+                problem_data = {
+                    "id": problem_id,
+                    "title": problem_title,
+                    "subject": problem_subject,
+                    "difficulty": problem_difficulty,
+                    "type": problem_type,
+                    "content": problem_content,
+                    "created_at": datetime.now().isoformat(),
+                    "created_by": st.session_state.username
+                }
+                
+                # 객관식일 경우 선택지 및 정답 추가
+                if problem_type == "객관식":
+                    problem_data["options"] = options
+                    if options and answer_index <= len(options):
+                        problem_data["answer"] = str(answer_index)
                     else:
-                        repo_problem["answer"] = repo_answer
-                    
-                    # 저장소에 문제 추가
-                    st.session_state.problem_repository["problems"].append(repo_problem)
-                    
-                    # 저장소 저장
-                    save_problem_repository()
-                    
-                    st.success("문제가 저장소에 성공적으로 추가되었습니다!")
-                    time.sleep(2)
-                    st.rerun()
+                        problem_data["answer"] = "1"
+                else:
+                    problem_data["answer"] = answer
+                
+                # 문제 저장소에 문제 추가
+                st.session_state.problem_repository["problems"].append(problem_data)
+                
+                # 문제 저장소 저장
+                save_problem_repository()
+                
+                st.success("문제가 저장소에 추가되었습니다.")
+                
+                # 입력 필드 초기화
+                for key in st.session_state.keys():
+                    if key.startswith("repo_"):
+                        st.session_state[key] = ""
+                
+                st.rerun()
 
 def teacher_my_info():
     username, user_data = get_user_data()
@@ -1864,20 +1835,43 @@ def init_app():
         load_users_data()
     
     # 초기 관리자 계정 생성 (필요한 경우)
-    if not any(user.get("role") == "admin" for user in st.session_state.users.values()):
-        # 기본 관리자 계정 생성
-        admin_password = hash_password("admin123")
-        st.session_state.users["admin"] = {
-            "username": "admin",
-            "password_hash": admin_password,
-            "name": "관리자",
-            "role": "admin",
-            "email": "admin@example.com",
-            "created_at": datetime.now().isoformat(),
-            "created_by": "system"
+    if not st.session_state.users:
+        # 기본 사용자 계정 생성 - 데모 계정
+        admin_password = hash_password("admin")
+        teacher_password = hash_password("teacher")
+        student_password = hash_password("student")
+        
+        st.session_state.users = {
+            "admin": {
+                "username": "admin",
+                "password": admin_password,
+                "name": "관리자",
+                "role": "admin",
+                "email": "admin@example.com",
+                "created_at": datetime.now().isoformat(),
+                "created_by": "system"
+            },
+            "teacher": {
+                "username": "teacher",
+                "password": teacher_password,
+                "name": "선생님",
+                "role": "teacher",
+                "email": "teacher@example.com",
+                "created_at": datetime.now().isoformat(),
+                "created_by": "system"
+            },
+            "student": {
+                "username": "student",
+                "password": student_password,
+                "name": "학생",
+                "role": "student",
+                "email": "student@example.com",
+                "created_at": datetime.now().isoformat(),
+                "created_by": "system"
+            }
         }
         save_users_data()
-        
+
 # 데이터 로드 함수
 def load_users_data():
     try:
@@ -2414,75 +2408,121 @@ def save_student_records():
 
 # 로그인 페이지 함수
 def login_page():
-    # CSS 스타일 적용
+    """로그인 페이지"""
     st.markdown("""
         <style>
-        .login-container {
+        .main-container {
             max-width: 400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 2rem;
+            background-color: white;
             border-radius: 10px;
-            background-color: #f8f9fa;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
-        .login-title {
-            color: #1f1f1f;
+        .title-container {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
         }
-        .login-input {
-            margin-bottom: 15px;
+        .title-container img {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 1rem;
         }
-        .login-button {
+        .title-container h1 {
+            font-size: 1.5rem;
+            color: #333;
+            margin: 0;
+        }
+        .input-container {
+            margin-bottom: 1rem;
+        }
+        .input-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .stTextInput > div > div > input {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 0.5rem;
+        }
+        .stButton > button {
             width: 100%;
-            margin-top: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 0.5rem;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        .demo-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-size: 0.9rem;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    
-    # 로고와 타이틀
-    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>🎓 학습 관리 시스템</h1>", unsafe_allow_html=True)
-    
-    # 로그인 폼
-    username = st.text_input("아이디", placeholder="아이디를 입력하세요")
-    password = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
-    
-    # 로그인 버튼
-    if st.button("로그인", use_container_width=True):
-        if not username or not password:
-            st.error("아이디와 비밀번호를 모두 입력해주세요.")
-        else:
-            if username in st.session_state.users:
-                user_data = st.session_state.users[username]
-                if verify_password(password, user_data["password"]):
-                    st.session_state.username = username
-                    role = user_data["role"]
-                    
-                    # 역할에 따른 환영 메시지
-                    if role == "admin":
-                        st.success("👨‍💼 관리자로 로그인되었습니다.")
-                    elif role == "teacher":
-                        st.success("👨‍🏫 교사로 로그인되었습니다.")
-                    elif role == "student":
-                        st.success("👨‍🎓 학생으로 로그인되었습니다.")
-                    
-                    time.sleep(1)
-                    st.rerun()
+    # 메인 컨테이너
+    with st.container():
+        # 타이틀
+        st.markdown("""
+            <div class="title-container">
+                <h1>🎓 학습 관리 시스템</h1>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # 로그인 폼
+        with st.form("login_form", clear_on_submit=False):
+            st.markdown('<div class="input-container">', unsafe_allow_html=True)
+            username = st.text_input("아이디", key="login_username", placeholder="아이디를 입력하세요")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="input-container">', unsafe_allow_html=True)
+            password = st.text_input("비밀번호", type="password", key="login_password", placeholder="비밀번호를 입력하세요")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            submitted = st.form_submit_button("로그인")
+            
+            if submitted:
+                if not username or not password:
+                    st.error("아이디와 비밀번호를 모두 입력해주세요.")
                 else:
-                    st.error("비밀번호가 일치하지 않습니다.")
-            else:
-                st.error("존재하지 않는 아이디입니다.")
-    
-    # 데모 계정 정보
-    with st.expander("데모 계정 정보"):
-        st.info("""
-        🔑 데모 계정:
-        - 관리자: admin / admin
-        - 교사: teacher / teacher
-        - 학생: student / student
-        """)
+                    if username in st.session_state.users:
+                        user_data = st.session_state.users[username]
+                        # 해시된 비밀번호와 비교
+                        if "password" in user_data and verify_password(password, user_data["password"]):
+                            st.session_state.username = username
+                            role = user_data.get('role', '')
+                            
+                            # 역할에 따른 환영 메시지
+                            if role == "admin":
+                                st.success("👨‍💼 관리자로 로그인되었습니다.")
+                            elif role == "teacher":
+                                st.success("👨‍🏫 교사로 로그인되었습니다.")
+                            elif role == "student":
+                                st.success("👨‍🎓 학생으로 로그인되었습니다.")
+                            
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("비밀번호가 일치하지 않습니다.")
+                    else:
+                        st.error("존재하지 않는 아이디입니다.")
+
+        # 데모 계정 정보
+        with st.expander("데모 계정 정보"):
+            st.markdown("""
+            🔑 데모 계정:
+            
+            - 관리자: admin / admin
+            - 교사: teacher / teacher
+            - 학생: student / student
+            """)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2664,99 +2704,70 @@ def admin_user_management():
 
 # 관리자 API 설정 함수
 def admin_api_settings():
-    st.header("🔑 API 키 관리")
-    
-    # 기본 API 키 설정
-    DEFAULT_OPENAI_API_KEY = "sk-b7UOp..."  # 실제 API 키 (베타 테스트용)
-    
-    # API 키 설정 여부 확인
-    current_api_key = st.session_state.get("openai_api_key", "")
-    if not current_api_key:
-        st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
-        current_api_key = DEFAULT_OPENAI_API_KEY
-    
-    # 현재 설정된 API 키 정보 표시
-    st.subheader("API 키 상태")
-    
-    if current_api_key:
-        is_default_key = current_api_key == DEFAULT_OPENAI_API_KEY
-        
-        if is_default_key:
-            st.success("✅ 기본 API 키가 설정되어 있습니다.")
-        else:
-            st.success("✅ 사용자 지정 API 키가 설정되어 있습니다.")
-    else:
-        st.error("❌ OpenAI API 키가 설정되어 있지 않습니다.")
+    st.header("API 설정")
+    st.info("API 키를 설정하고 관리합니다.")
     
     # 탭 생성
-    tab1, tab2 = st.tabs(["API 키 설정", "키 저장 옵션"])
+    tab1, tab2, tab3 = st.tabs(["OpenAI API 설정", "API 키 저장", "하드코딩된 키 설정"])
     
-    # API 키 설정 탭
+    # OpenAI API 설정 탭
     with tab1:
-        st.subheader("API 키 입력")
+        st.subheader("OpenAI API 설정")
+        current_key = st.session_state.get("openai_api_key", "")
         
-        new_api_key = st.text_input(
-            "OpenAI API 키",
-            value="",
-            type="password",
-            placeholder="sk-..."
-        )
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("API 키 적용", key="apply_key"):
-                if new_api_key:
-                    st.session_state.openai_api_key = new_api_key
-                    
-                    # OpenAI 클라이언트 초기화
-                    if has_openai:
-                        try:
-                            st.session_state.openai_client = openai.OpenAI(api_key=new_api_key)
-                            st.success("✅ API 키가 성공적으로 적용되었습니다.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ API 클라이언트 초기화 실패: {str(e)}")
-                    else:
-                        st.success("✅ API 키가 저장되었습니다.")
-        
-        with col2:
-            if st.button("기본 키로 복원", key="restore_key"):
-                st.session_state.openai_api_key = DEFAULT_OPENAI_API_KEY
-                if has_openai:
-                    try:
-                        st.session_state.openai_client = openai.OpenAI(api_key=DEFAULT_OPENAI_API_KEY)
-                        st.success("✅ 기본 API 키가 복원되었습니다.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ API 클라이언트 초기화 실패: {str(e)}")
-                else:
-                    st.success("✅ 기본 API 키가 복원되었습니다.")
-        
-        # API 연결 테스트
-        if st.button("API 연결 테스트"):
-            api_key_to_test = new_api_key if new_api_key else current_api_key
+        if current_key:
+            st.success("✅ OpenAI API 키가 설정되었습니다.")
+            masked_key = current_key[:4] + "*" * (len(current_key) - 8) + current_key[-4:]
+            st.code(masked_key)
             
-            if not api_key_to_test:
-                st.error("테스트할 API 키가 없습니다.")
-            elif has_openai:
-                with st.spinner("API 연결 테스트 중..."):
+            if st.button("API 키 초기화"):
+                st.session_state.openai_api_key = ""
+                st.rerun()
+        else:
+            st.warning("⚠️ OpenAI API 키가 설정되지 않았습니다.")
+            
+            with st.form("api_key_form"):
+                new_api_key = st.text_input("OpenAI API 키 입력:", type="password")
+                submit_button = st.form_submit_button("API 키 설정")
+                
+                if submit_button and new_api_key:
+                    st.session_state.openai_api_key = new_api_key
+                    st.success("✅ API 키가 성공적으로 설정되었습니다.")
+                    time.sleep(1)
+                    st.rerun()
+        
+        # 테스트 기능
+        st.subheader("API 연결 테스트")
+        test_message = st.text_input("테스트 메시지:", value="Hello, AI!")
+        
+        if st.button("연결 테스트"):
+            api_key = st.session_state.get("openai_api_key", "")
+            
+            if not api_key:
+                st.error("❌ API 키가 설정되지 않았습니다. 먼저 API 키를 설정하세요.")
+            else:
+                with st.spinner("OpenAI API에 연결 중..."):
                     try:
-                        client = openai.OpenAI(api_key=api_key_to_test)
+                        # 실제로는 여기서 OpenAI API 호출
+                        client = openai.OpenAI(api_key=api_key)
                         response = client.chat.completions.create(
                             model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": "Hello!"}],
-                            max_tokens=5
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant."},
+                                {"role": "user", "content": test_message}
+                            ],
+                            max_tokens=50
                         )
-                        st.success("✅ OpenAI API 연결 성공!")
+                        
+                        st.success("✅ API 연결 성공!")
+                        st.markdown("**응답:**")
+                        st.markdown(response.choices[0].message.content)
                     except Exception as e:
-                        st.error(f"❌ OpenAI API 연결 실패: {str(e)}")
-            else:
-                st.error("❌ OpenAI 라이브러리가 설치되어 있지 않습니다. 'pip install openai' 명령으로 설치하세요.")
+                        st.error(f"❌ API 연결 실패: {str(e)}")
     
-    # 키 저장 옵션 탭
+    # API 키 저장 탭
     with tab2:
-        st.subheader("API 키 저장 옵션")
+        st.subheader("API 키 저장 설정")
         st.info("API 키를 저장하면 앱 재시작 시 자동으로 로드됩니다.")
         
         save_option = st.radio(
