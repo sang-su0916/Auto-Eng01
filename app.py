@@ -1597,6 +1597,80 @@ def csv_problem_upload():
         except Exception as e:
             st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
 
+# OpenAI API 연결 및 오류 처리 개선
+def ai_generate_problems(subject, grade, difficulty, topic, problem_type, num_problems):
+    """AI를 사용하여 문제를 생성하는 함수"""
+    # API 키 확인
+    api_key = st.session_state.get("openai_api_key", "")
+    
+    if not api_key:
+        return False, "OpenAI API 키가 설정되지 않았습니다. 관리자 메뉴에서 API 키를 설정하세요."
+    
+    try:
+        # OpenAI API 호출
+        client = openai.OpenAI(api_key=api_key)
+        
+        # 프롬프트 구성
+        if problem_type == "객관식":
+            prompt = f"""
+            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 객관식 문제를 {num_problems}개 만들어주세요.
+            각 문제는 다음 형식으로 작성해주세요:
+            
+            문제: [문제 내용]
+            1. [선택지 1]
+            2. [선택지 2]
+            3. [선택지 3]
+            4. [선택지 4]
+            정답: [정답 번호]
+            
+            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
+            """
+        elif problem_type == "주관식":
+            prompt = f"""
+            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 주관식 문제를 {num_problems}개 만들어주세요.
+            각 문제는 다음 형식으로 작성해주세요:
+            
+            문제: [문제 내용]
+            정답: [정답]
+            
+            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
+            """
+        else:  # 서술식
+            prompt = f"""
+            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 서술식 문제를 {num_problems}개 만들어주세요.
+            각 문제는 다음 형식으로 작성해주세요:
+            
+            문제: [문제 내용]
+            모범답안: [모범답안]
+            
+            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
+            """
+        
+        # 모델 호출
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "당신은 교육 콘텐츠 전문가로, 학생들을 위한 학습 문제를 만드는 역할을 합니다."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        # 생성된 문제 반환
+        generated_content = response.choices[0].message.content
+        return True, generated_content
+    
+    except Exception as e:
+        error_msg = str(e)
+        if "Authentication" in error_msg:
+            return False, "API 키가 올바르지 않습니다. 관리자 메뉴에서 유효한 API 키를 설정하세요."
+        elif "Connection" in error_msg:
+            return False, "OpenAI 서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+        else:
+            return False, f"문제 생성 중 오류가 발생했습니다: {error_msg}"
+
+# 문제 생성 부분 수정
 def teacher_problem_creation():
     st.header("🔍 문제 출제")
     st.info("AI를 활용하여 문제를 자동으로 생성하거나 직접 문제를 출제할 수 있습니다.")
@@ -1652,104 +1726,47 @@ def teacher_problem_creation():
         
         # 문제 생성 버튼
         if st.button("AI로 문제 생성", use_container_width=True):
-            # API 키 확인
-            api_key = st.session_state.get("openai_api_key", "")
-            
-            if not api_key and not has_openai:
-                st.error("OpenAI API 키가 설정되지 않았습니다. 관리자 메뉴에서 API 키를 설정하세요.")
-            else:
-                with st.spinner(f"{subject} {grade}학년 {topic} 관련 문제를 생성하는 중입니다..."):
-                    try:
-                        # OpenAI API 호출
-                        client = openai.OpenAI(api_key=api_key)
+            with st.spinner(f"{subject} {grade}학년 {topic} 관련 문제를 생성하는 중입니다..."):
+                success, result = ai_generate_problems(subject, grade, difficulty, topic, problem_type, num_problems)
+                
+                if success:
+                    st.success("문제가 성공적으로 생성되었습니다! 생성된 문제는 자동으로 파싱되어 선생님의 문제 저장소에 저장됩니다.")
+                    st.markdown("### 생성된 문제")
+                    st.markdown(result)
+                    
+                    # 문제 파싱 및 저장
+                    parsed_problems = []
+                    if problem_type == "객관식":
+                        parsed_problems = parse_multiple_choice_problems(result)
+                    else:
+                        parsed_problems = parse_essay_problems(result)
+                    
+                    # 문제 저장
+                    if parsed_problems:
+                        # 현재 사용자의 문제 목록 가져오기
+                        username = st.session_state.username
+                        if username not in st.session_state.teacher_problems:
+                            st.session_state.teacher_problems[username] = []
                         
-                        # 프롬프트 구성
-                        if problem_type == "객관식":
-                            prompt = f"""
-                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 객관식 문제를 {num_problems}개 만들어주세요.
-                            각 문제는 다음 형식으로 작성해주세요:
+                        # 각 문제에 메타데이터 추가하여 저장
+                        for problem in parsed_problems:
+                            problem["subject"] = subject
+                            problem["grade"] = grade
+                            problem["difficulty"] = difficulty
+                            problem["type"] = problem_type
+                            problem["topic"] = topic
+                            problem["created_by"] = username
+                            problem["created_at"] = datetime.now().isoformat()
+                            problem["id"] = str(uuid.uuid4())
                             
-                            문제: [문제 내용]
-                            1. [선택지 1]
-                            2. [선택지 2]
-                            3. [선택지 3]
-                            4. [선택지 4]
-                            정답: [정답 번호]
-                            
-                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
-                            """
-                        elif problem_type == "주관식":
-                            prompt = f"""
-                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 주관식 문제를 {num_problems}개 만들어주세요.
-                            각 문제는 다음 형식으로 작성해주세요:
-                            
-                            문제: [문제 내용]
-                            정답: [정답]
-                            
-                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
-                            """
-                        else:  # 서술식
-                            prompt = f"""
-                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 서술식 문제를 {num_problems}개 만들어주세요.
-                            각 문제는 다음 형식으로 작성해주세요:
-                            
-                            문제: [문제 내용]
-                            모범답안: [모범답안]
-                            
-                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
-                            """
+                            st.session_state.teacher_problems[username].append(problem)
                         
-                        # 모델 호출
-                        response = client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {"role": "system", "content": "당신은 교육 콘텐츠 전문가로, 학생들을 위한 학습 문제를 만드는 역할을 합니다."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=0.7,
-                            max_tokens=2000
-                        )
+                        # 변경사항 저장
+                        save_teacher_problems()
                         
-                        # 생성된 문제 표시
-                        generated_content = response.choices[0].message.content
-                        st.success("문제가 성공적으로 생성되었습니다! 생성된 문제는 자동으로 파싱되어 선생님의 문제 저장소에 저장됩니다.")
-                        st.markdown("### 생성된 문제")
-                        st.markdown(generated_content)
-                        
-                        # 문제 파싱 및 저장
-                        parsed_problems = []
-                        if problem_type == "객관식":
-                            parsed_problems = parse_multiple_choice_problems(generated_content)
-                        else:
-                            parsed_problems = parse_essay_problems(generated_content)
-                        
-                        # 문제 저장
-                        if parsed_problems:
-                            # 현재 사용자의 문제 목록 가져오기
-                            username = st.session_state.username
-                            if username not in st.session_state.teacher_problems:
-                                st.session_state.teacher_problems[username] = []
-                            
-                            # 각 문제에 메타데이터 추가하여 저장
-                            for problem in parsed_problems:
-                                problem["subject"] = subject
-                                problem["grade"] = grade
-                                problem["difficulty"] = difficulty
-                                problem["type"] = problem_type
-                                problem["topic"] = topic
-                                problem["created_by"] = username
-                                problem["created_at"] = datetime.now().isoformat()
-                                problem["id"] = str(uuid.uuid4())
-                                
-                                st.session_state.teacher_problems[username].append(problem)
-                            
-                            # 변경사항 저장
-                            save_teacher_problems()
-                            
-                            st.success(f"{len(parsed_problems)}개의 문제가 성공적으로 저장되었습니다! '문제 목록' 메뉴에서 확인하실 수 있습니다.")
-                    except Exception as e:
-                        st.error(f"문제 생성 중 오류가 발생했습니다: {str(e)}")
-                        st.error(traceback.format_exc())
+                        st.success(f"{len(parsed_problems)}개의 문제가 성공적으로 저장되었습니다! '문제 목록' 메뉴에서 확인하실 수 있습니다.")
+                else:
+                    st.error(result)
 
 def main():
     # 앱 초기화
