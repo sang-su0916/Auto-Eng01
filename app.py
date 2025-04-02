@@ -2459,14 +2459,9 @@ def login_page():
                 else:
                     if username in st.session_state.users:
                         user_data = st.session_state.users[username]
-                        # 비밀번호 필드가 password 또는 password_hash 중 어떤 것을 사용하는지 확인
-                        password_value = None
-                        if "password" in user_data:
-                            password_value = user_data["password"]
-                        elif "password_hash" in user_data:
-                            password_value = user_data["password_hash"]
                         
-                        if password_value and verify_password(password, password_value):
+                        # 안전한 비밀번호 검증 함수 사용
+                        if verify_password_safely(password, user_data):
                             st.session_state.username = username
                             role = user_data.get('role', '')
                             
@@ -3136,6 +3131,27 @@ def is_package_available(package_name):
         return True
     except ImportError:
         return False
+
+# 비밀번호 검증 관련 함수 개선
+def verify_password_safely(plain_password, user_data):
+    """안전하게 비밀번호를 검증합니다."""
+    if not user_data:
+        return False
+    
+    # 비밀번호 필드가 다양한 키로 저장될 수 있으므로 모두 확인
+    password_value = None
+    password_keys = ["password", "password_hash"]
+    
+    for key in password_keys:
+        if key in user_data:
+            password_value = user_data[key]
+            break
+    
+    if not password_value:
+        return False
+        
+    # 비밀번호 검증
+    return verify_password(plain_password, password_value)
 
 # 앱 실행
 if __name__ == "__main__":
