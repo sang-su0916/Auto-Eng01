@@ -68,7 +68,7 @@ except ImportError:
     
     pd = DummyPandas()
 
-# OpenAI 관련 기능
+# OpenAI 관련 기능 수정
 has_openai = False
 try:
     import openai
@@ -76,21 +76,31 @@ try:
 except ImportError:
     has_openai = False
     # 간단한 대체 클래스
-    class DummyOpenAI:
-        def __init__(self, *args, **kwargs):
-            self.chat = self
-            self.completions = self
+    class DummyChat:
+        def completions(self):
+            return self
         
         def create(self, *args, **kwargs):
+            class DummyMessage:
+                def __init__(self):
+                    self.content = "OpenAI API를 사용할 수 없습니다."
+            
+            class DummyChoice:
+                def __init__(self):
+                    self.message = DummyMessage()
+            
             class DummyResponse:
                 def __init__(self):
-                    self.choices = [self]
-                    self.message = self
-                    self.content = "OpenAI API를 사용할 수 없습니다."
+                    self.choices = [DummyChoice()]
+            
             return DummyResponse()
-    
+            
+    class DummyOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = DummyChat()
+        
     # 가짜 openai 모듈 생성
-    openai = type('openai', (), {'OpenAI': DummyOpenAI})
+    openai = type('obj', (), {'OpenAI': DummyOpenAI})
 
 # 비밀번호 관련 기능
 try:
@@ -1338,186 +1348,12 @@ def student_problem_repository_view():
                     st.session_state.problem_solving_id = temp_problem_id
                     st.rerun()
 
-def teacher_problem_creation():
-    st.header("문제 출제")
+# 직접 문제 출제 기능
+def direct_problem_creation():
+    st.subheader("직접 문제 출제")
     
-    # 문제 출제 방식 선택
-    problem_creation_method = st.radio(
-        "문제 출제 방식 선택:",
-        ["직접 문제 출제", "CSV 파일 업로드", "AI 문제 자동 생성"]
-    )
-    
-    if problem_creation_method == "CSV 파일 업로드":
-        st.subheader("CSV 파일로 문제 업로드")
-        
-        # CSV 파일 형식 안내
-        with st.expander("CSV 파일 형식 안내", expanded=False):
-            st.markdown("""
-            ### CSV 파일 형식 안내
-            
-            CSV 파일은 다음 필드를 포함해야 합니다:
-            - **title**: 문제 제목
-            - **description**: 문제 내용
-            - **difficulty**: 난이도 (쉬움, 보통, 어려움)
-            - **expected_time**: 예상 풀이 시간(분)
-            - **type**: 문제 유형 (객관식, 주관식, 서술식)
-            
-            객관식일 경우 추가 필드:
-            - **options**: 선택지 (쉼표로 구분)
-            - **correct_answer**: 정답 번호 (1부터 시작)
-            
-            서술식/주관식일 경우 추가 필드:
-            - **answer**: 예시 답안
-            - **grading_criteria**: 채점 기준 (선택사항)
-            """)
-        
-        # 샘플 CSV 파일 다운로드 버튼들
-        st.markdown("### 샘플 CSV 파일 다운로드")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            # 객관식 문제 샘플
-            multiple_choice_sample = """title,description,difficulty,expected_time,type,options,correct_answer,explanation
-"영어 단어 선택하기","다음 중 'apple'의 뜻으로 올바른 것은?",쉬움,1,객관식,"사과,바나나,오렌지,포도",1,"'apple'은 영어로 '사과'를 의미합니다."
-"수학 문제","2 + 2 = ?",쉬움,1,객관식,"3,4,5,6",2,"2 + 2 = 4 입니다."
-"과학 퀴즈","다음 중 포유류가 아닌 것은?",보통,2,객관식,"고래,박쥐,닭,개",3,"닭은 조류입니다. 나머지는 모두 포유류입니다."
-"""
-            
-            if st.download_button(
-                label="객관식 문제 샘플",
-                data=multiple_choice_sample,
-                file_name="multiple_choice_sample.csv",
-                mime="text/csv"
-            ):
-                st.success("객관식 문제 샘플 다운로드 완료!")
-        
-        with col2:
-            # 주관식 문제 샘플
-            short_answer_sample = """title,description,difficulty,expected_time,type,answer,grading_criteria
-"영어 단어 쓰기","'사과'를 영어로 쓰시오.",쉬움,1,주관식,"apple","철자가 정확해야 함"
-"수도 이름","대한민국의 수도는?",쉬움,1,주관식,"서울","서울, 서울특별시 모두 정답"
-"간단한 계산","7 × 8의 값을 구하시오.",보통,2,주관식,"56","정확한 숫자만 정답"
-"""
-            
-            if st.download_button(
-                label="주관식 문제 샘플",
-                data=short_answer_sample,
-                file_name="short_answer_sample.csv",
-                mime="text/csv"
-            ):
-                st.success("주관식 문제 샘플 다운로드 완료!")
-        
-        with col3:
-            # 서술식 문제 샘플
-            essay_sample = """title,description,difficulty,expected_time,type,answer,grading_criteria
-"자기소개","자신에 대해 100단어 이상으로 소개해 보세요.",보통,10,서술식,"(예시 답안은 학생마다 다름)","1. 100단어 이상 작성 (30점) 2. 문법 및 맞춤법 (30점) 3. 내용의 충실성 (40점)"
-"환경 문제 에세이","환경 오염의 주요 원인과 해결책에 대해 서술하시오.",어려움,15,서술식,"환경 오염의 주요 원인으로는 산업 활동, 교통, 폐기물 처리 등이 있습니다. 해결책으로는 친환경 에너지 사용, 재활용 촉진, 환경 교육 강화 등이 있습니다.","1. 원인 분석 (40점) 2. 해결책 제시 (40점) 3. 논리적 구성 (20점)"
-"역사적 사건 분석","한국 전쟁이 한반도에 미친 영향에 대해 설명하시오.",어려움,20,서술식,"한국 전쟁은 정치, 경제, 사회적으로 큰 영향을 미쳤습니다. 정치적으로는 분단이 고착화되었고, 경제적으로는 전후 재건 과정을 겪었으며, 사회적으로는 이산가족 문제 등이 발생했습니다.","1. 정치적 영향 (30점) 2. 경제적 영향 (30점) 3. 사회적 영향 (30점) 4. 자료 활용 (10점)"
-"""
-            
-            if st.download_button(
-                label="서술식 문제 샘플",
-                data=essay_sample,
-                file_name="essay_sample.csv",
-                mime="text/csv"
-            ):
-                st.success("서술식 문제 샘플 다운로드 완료!")
-        
-        # CSV 파일 업로드
-        uploaded_file = st.file_uploader("CSV 파일 선택", type=["csv"])
-        
-        if uploaded_file is not None:
-            try:
-                # pandas로 CSV 파일 읽기
-                df = pd.read_csv(uploaded_file)
-                
-                # 데이터 미리보기
-                st.write("업로드된 데이터 미리보기:")
-                st.dataframe(df.head())
-                
-                # 필수 필드 확인
-                required_fields = ["title", "description", "difficulty", "type"]
-                missing_fields = [field for field in required_fields if field not in df.columns]
-                
-                if missing_fields:
-                    st.error(f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}")
-                else:
-                    # 데이터 처리 및 문제 추가 로직
-                    if st.button("문제 추가하기"):
-                        success_count = 0
-                        error_count = 0
-                        
-                        # 교사의 문제 목록 초기화
-                        if st.session_state.username not in st.session_state.teacher_problems:
-                            st.session_state.teacher_problems[st.session_state.username] = []
-                        
-                        for _, row in df.iterrows():
-                            try:
-                                problem = {
-                                    "id": str(uuid.uuid4()),
-                                    "title": row["title"],
-                                    "description": row["description"],
-                                    "difficulty": row["difficulty"],
-                                    "created_by": st.session_state.username,
-                                    "created_at": datetime.now().isoformat()
-                                }
-                                
-                                # 문제 유형에 따른 추가 필드
-                                problem_type = row["type"]
-                                if problem_type == "객관식":
-                                    problem["problem_type"] = "multiple_choice"
-                                    # 선택지 처리
-                                    if "options" in row and not pd.isna(row["options"]):
-                                        problem["options"] = [opt.strip() for opt in str(row["options"]).split(",")]
-                                    else:
-                                        problem["options"] = []
-                                    
-                                    # 정답 처리
-                                    if "correct_answer" in row and not pd.isna(row["correct_answer"]):
-                                        problem["correct_answer"] = int(row["correct_answer"])
-                                else:
-                                    problem["problem_type"] = "essay"
-                                
-                                # 공통 추가 필드
-                                if "expected_time" in row and not pd.isna(row["expected_time"]):
-                                    problem["expected_time"] = int(row["expected_time"])
-                                
-                                if "answer" in row and not pd.isna(row["answer"]):
-                                    problem["sample_answer"] = row["answer"]
-                                
-                                if "explanation" in row and not pd.isna(row["explanation"]):
-                                    problem["explanation"] = row["explanation"]
-                                
-                                if "grading_criteria" in row and not pd.isna(row["grading_criteria"]):
-                                    problem["grading_criteria"] = row["grading_criteria"]
-                                
-                                # 교사의 문제 목록에 추가
-                                st.session_state.teacher_problems[st.session_state.username].append(problem)
-                                success_count += 1
-                            except Exception as e:
-                                error_count += 1
-                                st.error(f"문제 추가 중 오류 발생: {e}")
-                        
-                        # 변경사항 저장
-                        save_teacher_problems()
-                        
-                        if success_count > 0:
-                            st.success(f"{success_count}개의 문제가 성공적으로 추가되었습니다.")
-                        if error_count > 0:
-                            st.warning(f"{error_count}개의 문제 추가 중 오류가 발생했습니다.")
-                        
-                        # 3초 후 새로고침
-                        time.sleep(3)
-                        st.rerun()
-                
-            except Exception as e:
-                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
-    
-    elif problem_creation_method == "직접 문제 출제":
-        st.subheader("직접 문제 출제")
-        
-        # 문제 정보 입력 폼
+    # 문제 정보 입력 폼
+    with st.form("direct_problem_form"):
         problem_type = st.selectbox(
             "문제 유형:",
             ["주관식", "객관식", "서술식"]
@@ -1542,11 +1378,6 @@ def teacher_problem_creation():
                 ["수학", "영어", "국어", "과학", "사회", "기타"]
             )
             
-            school_type = st.selectbox(
-                "학교 구분:",
-                ["초등학교", "중학교", "고등학교", "기타"]
-            )
-            
             grade = st.selectbox(
                 "학년:",
                 ["1", "2", "3", "4", "5", "6"]
@@ -1569,7 +1400,9 @@ def teacher_problem_creation():
             grading_criteria = st.text_area("채점 기준:")
         
         # 문제 추가 버튼
-        if st.button("문제 추가"):
+        submitted = st.form_submit_button("문제 추가")
+        
+        if submitted:
             if not title or not description:
                 st.error("제목과 내용은 필수 입력 항목입니다.")
             elif problem_type == "객관식" and (not all(options) or not correct_answer):
@@ -1588,7 +1421,6 @@ def teacher_problem_creation():
                     "description": description,
                     "difficulty": difficulty,
                     "subject": subject,
-                    "school_type": school_type,
                     "grade": grade,
                     "expected_time": expected_time,
                     "created_by": st.session_state.username,
@@ -1597,13 +1429,13 @@ def teacher_problem_creation():
                 
                 # 문제 유형에 따른 추가 필드
                 if problem_type == "객관식":
-                    new_problem["problem_type"] = "multiple_choice"
+                    new_problem["type"] = "객관식"
                     new_problem["options"] = options
-                    new_problem["correct_answer"] = correct_answer
+                    new_problem["answer"] = str(correct_answer)
                     new_problem["explanation"] = explanation
                 else:
-                    new_problem["problem_type"] = "essay" if problem_type == "주관식" else "long_essay"
-                    new_problem["sample_answer"] = sample_answer
+                    new_problem["type"] = problem_type
+                    new_problem["answer"] = sample_answer
                     new_problem["grading_criteria"] = grading_criteria
                 
                 # 교사의 문제 목록에 추가
@@ -1613,173 +1445,311 @@ def teacher_problem_creation():
                 save_teacher_problems()
                 
                 st.success("문제가 성공적으로 추가되었습니다!")
-                time.sleep(2)
-                st.rerun()
+
+# CSV 파일 업로드 기능
+def csv_problem_upload():
+    st.subheader("CSV 파일로 문제 업로드")
     
-    else:  # AI 문제 자동 생성
+    # CSV 파일 형식 안내
+    with st.expander("CSV 파일 형식 안내", expanded=False):
+        st.markdown("""
+        ### CSV 파일 형식 안내
+        
+        CSV 파일은 다음 필드를 포함해야 합니다:
+        - **title**: 문제 제목
+        - **description**: 문제 내용
+        - **difficulty**: 난이도 (쉬움, 보통, 어려움)
+        - **subject**: 과목 (수학, 영어, 국어, 과학, 사회, 기타)
+        - **type**: 문제 유형 (객관식, 주관식, 서술식)
+        
+        객관식일 경우 추가 필드:
+        - **options**: 선택지 (쉼표로 구분)
+        - **answer**: 정답 번호 (1부터 시작)
+        
+        서술식/주관식일 경우 추가 필드:
+        - **answer**: 예시 답안
+        """)
+    
+    # 샘플 CSV 파일 다운로드 버튼
+    multiple_choice_sample = """title,description,difficulty,subject,type,options,answer
+"영어 단어 선택하기","다음 중 'apple'의 뜻으로 올바른 것은?",쉬움,영어,객관식,"사과,바나나,오렌지,포도",1
+"수학 문제","2 + 2 = ?",쉬움,수학,객관식,"3,4,5,6",2
+"과학 퀴즈","다음 중 포유류가 아닌 것은?",보통,과학,객관식,"고래,박쥐,닭,개",3
+"""
+    
+    short_answer_sample = """title,description,difficulty,subject,type,answer
+"영어 단어 쓰기","'사과'를 영어로 쓰시오.",쉬움,영어,주관식,"apple"
+"수도 이름","대한민국의 수도는?",쉬움,사회,주관식,"서울"
+"간단한 계산","7 × 8의 값을 구하시오.",보통,수학,주관식,"56"
+"""
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.download_button(
+            label="객관식 문제 샘플",
+            data=multiple_choice_sample,
+            file_name="multiple_choice_sample.csv",
+            mime="text/csv"
+        ):
+            st.success("객관식 문제 샘플 다운로드 완료!")
+    
+    with col2:
+        if st.download_button(
+            label="주관식 문제 샘플",
+            data=short_answer_sample,
+            file_name="short_answer_sample.csv",
+            mime="text/csv"
+        ):
+            st.success("주관식 문제 샘플 다운로드 완료!")
+    
+    # CSV 파일 업로드
+    uploaded_file = st.file_uploader("CSV 파일 선택", type=["csv"])
+    
+    if uploaded_file is not None:
+        try:
+            # pandas로 CSV 파일 읽기
+            import pandas as pd
+            df = pd.read_csv(uploaded_file)
+            
+            # 데이터 미리보기
+            st.write("업로드된 데이터 미리보기:")
+            st.dataframe(df.head())
+            
+            # 필수 필드 확인
+            required_fields = ["title", "description", "difficulty", "type"]
+            missing_fields = [field for field in required_fields if field not in df.columns]
+            
+            if missing_fields:
+                st.error(f"필수 필드가 누락되었습니다: {', '.join(missing_fields)}")
+            else:
+                # 데이터 처리 및 문제 추가 로직
+                if st.button("문제 추가하기"):
+                    success_count = 0
+                    error_count = 0
+                    
+                    # 교사의 문제 목록 초기화
+                    if st.session_state.username not in st.session_state.teacher_problems:
+                        st.session_state.teacher_problems[st.session_state.username] = []
+                    
+                    for i, row in df.iterrows():
+                        try:
+                            problem = {
+                                "id": str(uuid.uuid4()),
+                                "title": row["title"],
+                                "description": row["description"],
+                                "difficulty": row["difficulty"],
+                                "type": row["type"],
+                                "created_by": st.session_state.username,
+                                "created_at": datetime.now().isoformat()
+                            }
+                            
+                            # 과목 정보 추가
+                            if "subject" in row:
+                                problem["subject"] = row["subject"]
+                            else:
+                                problem["subject"] = "기타"
+                            
+                            # 학년 정보 추가
+                            if "grade" in row:
+                                problem["grade"] = row["grade"]
+                            else:
+                                problem["grade"] = "1"
+                            
+                            # 문제 유형에 따른 추가 필드
+                            if row["type"] == "객관식":
+                                # 선택지 처리
+                                if "options" in row:
+                                    problem["options"] = [opt.strip() for opt in str(row["options"]).split(",")]
+                                else:
+                                    st.warning(f"행 {i+1}의 객관식 문제에 선택지가 누락되었습니다.")
+                                    problem["options"] = []
+                                
+                                # 정답 처리
+                                if "answer" in row:
+                                    problem["answer"] = str(row["answer"])
+                                else:
+                                    st.warning(f"행 {i+1}의 객관식 문제에 정답이 누락되었습니다.")
+                                    problem["answer"] = "1"
+                            else:
+                                # 주관식/서술식 답안
+                                if "answer" in row:
+                                    problem["answer"] = row["answer"]
+                                else:
+                                    st.warning(f"행 {i+1}의 문제에 답안이 누락되었습니다.")
+                                    problem["answer"] = ""
+                            
+                            # 교사의 문제 목록에 추가
+                            st.session_state.teacher_problems[st.session_state.username].append(problem)
+                            success_count += 1
+                        except Exception as e:
+                            error_count += 1
+                            st.error(f"행 {i+1}의 문제 추가 중 오류 발생: {e}")
+                    
+                    # 변경사항 저장
+                    save_teacher_problems()
+                    
+                    if success_count > 0:
+                        st.success(f"{success_count}개의 문제가 성공적으로 추가되었습니다.")
+                    if error_count > 0:
+                        st.warning(f"{error_count}개의 문제 추가 중 오류가 발생했습니다.")
+        
+        except Exception as e:
+            st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+
+def teacher_problem_creation():
+    st.header("🔍 문제 출제")
+    st.info("AI를 활용하여 문제를 자동으로 생성하거나 직접 문제를 출제할 수 있습니다.")
+    
+    # 문제 출제 방식 선택
+    creation_method = st.radio(
+        "문제 출제 방식 선택:",
+        ["직접 문제 출제", "CSV 파일 업로드", "AI 문제 자동 생성"],
+        horizontal=True
+    )
+    
+    if creation_method == "직접 문제 출제":
+        direct_problem_creation()
+    elif creation_method == "CSV 파일 업로드":
+        csv_problem_upload()
+    elif creation_method == "AI 문제 자동 생성":
         st.subheader("AI 문제 자동 생성")
+        st.markdown("AI를 활용하여 문제를 자동으로 생성합니다.")
         
-        # API 키 확인
-        if not st.session_state.get("openai_api_key"):
-            st.error("OpenAI API 키가 설정되지 않았습니다. 관리자에게 문의하세요.")
-            return
+        # 링크 복사 버튼 추가
+        st.markdown("""
+        <div style="display: flex; align-items: center;">
+            <h3 style="margin-right: 10px;">AI 문제 자동 생성</h3>
+            <button onclick="navigator.clipboard.writeText(window.location.href)" 
+                style="background: none; border: none; cursor: pointer;">
+                🔗
+            </button>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # AI 문제 생성 설정
+        # 문제 생성 설정
         col1, col2 = st.columns(2)
         
         with col1:
-            ai_subject = st.selectbox(
-                "과목:",
-                ["수학", "영어", "국어", "과학", "사회"]
-            )
-            
-            ai_school_type = st.selectbox(
-                "학교 구분:",
-                ["중학교", "고등학교"]
-            )
+            subject = st.selectbox("과목:", ["영어"], index=0)
+            # 기본적으로 영어만 선택 가능하게 설정
         
         with col2:
-            ai_grade = st.selectbox(
-                "학년:",
-                ["1", "2", "3"]
-            )
+            grade = st.selectbox("학년:", ["1", "2", "3", "4", "5", "6"], index=2)
+        
+        difficulty = st.selectbox("난이도:", ["쉬움", "보통", "어려움"], index=1)
+        
+        # 주제 입력 (비워두면 "임의대로"로 설정)
+        topic = st.text_input("주제:", value="임의대로", help="비워두면 '임의대로'로 설정됩니다.")
+        if not topic:
+            topic = "임의대로"
             
-            ai_difficulty = st.selectbox(
-                "난이도:",
-                ["쉬움", "보통", "어려움"]
-            )
+        # 문제 유형 선택
+        problem_type = st.radio("문제 유형:", ["객관식", "주관식", "서술식"], horizontal=True, index=0)
         
-        ai_topic = st.text_input("주제(구체적일수록 좋습니다):", "")
-        
-        ai_problem_type = st.radio(
-            "문제 유형:",
-            ["객관식", "주관식", "서술식"]
-        )
-        
-        problem_count = st.slider("생성할 문제 수:", min_value=1, max_value=5, value=3)
+        # 생성할 문제 수
+        num_problems = st.slider("생성할 문제 수:", min_value=1, max_value=5, value=5)
         
         # 문제 생성 버튼
-        if st.button("AI로 문제 생성"):
-            if not ai_topic:
-                st.error("주제를 입력해주세요.")
+        if st.button("AI로 문제 생성", use_container_width=True):
+            # API 키 확인
+            api_key = st.session_state.get("openai_api_key", "")
+            
+            if not api_key and not has_openai:
+                st.error("OpenAI API 키가 설정되지 않았습니다. 관리자 메뉴에서 API 키를 설정하세요.")
             else:
-                with st.spinner("AI가 문제를 생성 중입니다... (최대 1분 소요)"):
+                with st.spinner(f"{subject} {grade}학년 {topic} 관련 문제를 생성하는 중입니다..."):
                     try:
                         # OpenAI API 호출
-                        client = openai.OpenAI(api_key=st.session_state.openai_api_key)
+                        client = openai.OpenAI(api_key=api_key)
                         
-                        # 프롬프트 생성
-                        system_prompt = f"""
-                        당신은 교육 전문가로서 학생들을 위한 고품질 문제를 생성합니다.
-                        다음 조건에 맞는 {problem_count}개의 문제를 생성해 주세요:
-                        - 과목: {ai_subject}
-                        - 학교: {ai_school_type}
-                        - 학년: {ai_grade}학년
-                        - 난이도: {ai_difficulty}
-                        - 주제: {ai_topic}
-                        - 문제 유형: {ai_problem_type}
-                        
-                        문제 형식은 다음과 같이 제공해 주세요:
-                        """
-                        
-                        if ai_problem_type == "객관식":
-                            system_prompt += """
-                            문제 1:
-                            제목: [문제 제목]
-                            내용: [문제 내용]
-                            보기1: [선택지 1]
-                            보기2: [선택지 2]
-                            보기3: [선택지 3]
-                            보기4: [선택지 4]
-                            정답: [정답 번호(1~4)]
-                            해설: [문제 해설]
-                            예상 시간: [풀이 예상 시간(분)]
+                        # 프롬프트 구성
+                        if problem_type == "객관식":
+                            prompt = f"""
+                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 객관식 문제를 {num_problems}개 만들어주세요.
+                            각 문제는 다음 형식으로 작성해주세요:
                             
-                            문제 2:
-                            ...
+                            문제: [문제 내용]
+                            1. [선택지 1]
+                            2. [선택지 2]
+                            3. [선택지 3]
+                            4. [선택지 4]
+                            정답: [정답 번호]
+                            
+                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
                             """
-                        else:
-                            system_prompt += """
-                            문제 1:
-                            제목: [문제 제목]
-                            내용: [문제 내용]
-                            예시 답안: [모범 답안]
-                            채점 기준: [채점 기준]
-                            예상 시간: [풀이 예상 시간(분)]
+                        elif problem_type == "주관식":
+                            prompt = f"""
+                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 주관식 문제를 {num_problems}개 만들어주세요.
+                            각 문제는 다음 형식으로 작성해주세요:
                             
-                            문제 2:
-                            ...
+                            문제: [문제 내용]
+                            정답: [정답]
+                            
+                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
+                            """
+                        else:  # 서술식
+                            prompt = f"""
+                            {grade}학년 {subject} 교과 {topic} 관련 {difficulty} 수준의 서술식 문제를 {num_problems}개 만들어주세요.
+                            각 문제는 다음 형식으로 작성해주세요:
+                            
+                            문제: [문제 내용]
+                            모범답안: [모범답안]
+                            
+                            각 문제 사이에는 빈 줄을 넣어서 구분해주세요.
                             """
                         
-                        # API 호출
+                        # 모델 호출
                         response = client.chat.completions.create(
                             model="gpt-3.5-turbo",
                             messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": f"{ai_subject} {ai_school_type} {ai_grade}학년 학생들을 위한 {ai_topic} 관련 {ai_problem_type} {problem_count}개를 생성해 주세요."}
+                                {"role": "system", "content": "당신은 교육 콘텐츠 전문가로, 학생들을 위한 학습 문제를 만드는 역할을 합니다."},
+                                {"role": "user", "content": prompt}
                             ],
                             temperature=0.7,
                             max_tokens=2000
                         )
                         
-                        # 응답 처리
+                        # 생성된 문제 표시
                         generated_content = response.choices[0].message.content
+                        st.success("문제가 성공적으로 생성되었습니다! 생성된 문제는 자동으로 파싱되어 선생님의 문제 저장소에 저장됩니다.")
+                        st.markdown("### 생성된 문제")
+                        st.markdown(generated_content)
                         
-                        st.subheader("생성된 문제")
-                        st.write(generated_content)
+                        # 문제 파싱 및 저장
+                        parsed_problems = []
+                        if problem_type == "객관식":
+                            parsed_problems = parse_multiple_choice_problems(generated_content)
+                        else:
+                            parsed_problems = parse_essay_problems(generated_content)
                         
-                        # 생성된 문제 파싱 및 저장 옵션
-                        if st.button("생성된 문제 저장"):
-                            problems = []
+                        # 문제 저장
+                        if parsed_problems:
+                            # 현재 사용자의 문제 목록 가져오기
+                            username = st.session_state.username
+                            if username not in st.session_state.teacher_problems:
+                                st.session_state.teacher_problems[username] = []
                             
-                            try:
-                                if ai_problem_type == "객관식":
-                                    problems = parse_multiple_choice_problems(generated_content)
-                                else:
-                                    problems = parse_essay_problems(generated_content)
+                            # 각 문제에 메타데이터 추가하여 저장
+                            for problem in parsed_problems:
+                                problem["subject"] = subject
+                                problem["grade"] = grade
+                                problem["difficulty"] = difficulty
+                                problem["type"] = problem_type
+                                problem["topic"] = topic
+                                problem["created_by"] = username
+                                problem["created_at"] = datetime.now().isoformat()
+                                problem["id"] = str(uuid.uuid4())
                                 
-                                # 교사의 문제 목록 초기화
-                                if st.session_state.username not in st.session_state.teacher_problems:
-                                    st.session_state.teacher_problems[st.session_state.username] = []
-                                
-                                # 파싱된 문제 처리
-                                success_count = 0
-                                for problem in problems:
-                                    # 기본 정보 추가
-                                    problem["id"] = str(uuid.uuid4())
-                                    problem["subject"] = ai_subject
-                                    problem["school_type"] = ai_school_type
-                                    problem["grade"] = ai_grade
-                                    problem["difficulty"] = ai_difficulty
-                                    problem["created_by"] = st.session_state.username
-                                    problem["created_at"] = datetime.now().isoformat()
-                                    
-                                    # 문제 유형 설정
-                                    if ai_problem_type == "객관식":
-                                        problem["problem_type"] = "multiple_choice"
-                                    else:
-                                        problem["problem_type"] = "essay" if ai_problem_type == "주관식" else "long_essay"
-                                    
-                                    # 추가
-                                    st.session_state.teacher_problems[st.session_state.username].append(problem)
-                                    success_count += 1
-                                
-                                # 변경사항 저장
-                                save_teacher_problems()
-                                
-                                if success_count > 0:
-                                    st.success(f"{success_count}개의 문제가 성공적으로 저장되었습니다!")
-                                else:
-                                    st.warning("저장된 문제가 없습니다. 파싱에 실패했을 수 있습니다.")
-                                
-                                time.sleep(2)
-                                st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"문제 파싱 중 오류가 발생했습니다: {e}")
-                        
+                                st.session_state.teacher_problems[username].append(problem)
+                            
+                            # 변경사항 저장
+                            save_teacher_problems()
+                            
+                            st.success(f"{len(parsed_problems)}개의 문제가 성공적으로 저장되었습니다! '문제 목록' 메뉴에서 확인하실 수 있습니다.")
                     except Exception as e:
-                        st.error(f"AI 문제 생성 중 오류가 발생했습니다: {e}")
+                        st.error(f"문제 생성 중 오류가 발생했습니다: {str(e)}")
+                        st.error(traceback.format_exc())
 
 def main():
     # 앱 초기화
@@ -2423,11 +2393,6 @@ def login_page():
             text-align: center;
             margin-bottom: 2rem;
         }
-        .title-container img {
-            width: 40px;
-            height: 40px;
-            margin-bottom: 1rem;
-        }
         .title-container h1 {
             font-size: 1.5rem;
             color: #333;
@@ -2494,8 +2459,14 @@ def login_page():
                 else:
                     if username in st.session_state.users:
                         user_data = st.session_state.users[username]
-                        # 해시된 비밀번호와 비교
-                        if "password" in user_data and verify_password(password, user_data["password"]):
+                        # 비밀번호 필드가 password 또는 password_hash 중 어떤 것을 사용하는지 확인
+                        password_value = None
+                        if "password" in user_data:
+                            password_value = user_data["password"]
+                        elif "password_hash" in user_data:
+                            password_value = user_data["password_hash"]
+                        
+                        if password_value and verify_password(password, password_value):
                             st.session_state.username = username
                             role = user_data.get('role', '')
                             
